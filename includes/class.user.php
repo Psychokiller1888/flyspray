@@ -191,7 +191,7 @@ class User
             $proj = $proj['project_id'];
         }
 
-        return $this->perms('view_tasks', $proj)
+        return ($this->perms('view_tasks', $proj) || $this->perms('view_groups_tasks', $proj) || $this->perms('view_own_tasks', $proj))
           || ($this->perms('project_is_active', $proj)
               && ($this->perms('others_view', $proj) || $this->perms('project_group', $proj)));
     }
@@ -247,7 +247,7 @@ class User
                 if ($task['opened_by'] == $this->id) {
                     return true;
                 }
-                // Fetch only once, could be needed twice
+                // Fetch only once, could be needed three times.
                 $assignees = Flyspray::GetAssignees($task['task_id']);
                 if (in_array($this->id, $assignees)) {
                     return true;
@@ -267,6 +267,26 @@ class User
                         return true;
                     }
                 }
+                
+                // Check the global group next. Note that for users in that group to be included,
+                // the has to be specified at global group level. So even if our permission system
+                // works by OR'ing the permissions together, who is actually considered to be in
+                // in the same group now depends on whether this permission has been given on global
+                // or project level. 
+                if ($this->perms('view_groups_tasks', 0)) {
+                    $group = $this->perms('project_group', 0);
+                    $others = Project::listUsersIn($group);
+
+                    foreach ($others as $other) {
+                        if ($other['user_id'] == $task['opened_by']) {
+                            return true;
+                        }
+                        if (in_array($other['user_id'], $assignees)) {
+                            return true;
+                        }
+                    }
+                }
+                
                 // No use to continue further.
                 return false;
             }
@@ -392,6 +412,7 @@ class User
             return -2;
         }
 
+	/* FS 1.0alpha daily vote limit
         // Check that the user hasn't voted more than allowed today
         $check = $db->Query('SELECT vote_id
                                FROM {votes}
@@ -400,6 +421,22 @@ class User
         if ($db->CountRows($check) >= $fs->prefs['max_vote_per_day']) {
             return -3;
         }
+	*/
+	
+	/* FS 1.0beta2 max votes per user per project limit */
+	$check = $db->Query('
+		SELECT COUNT(v.vote_id)
+		FROM {votes} v
+		JOIN {tasks} t ON t.task_id=v.task_id
+		WHERE user_id = ?
+		AND t.project_id = ?
+		AND t.is_closed <>1',
+		array($this->id, $task['project_id'])
+	);
+	if ($db->CountRows($check) >= $fs->prefs['votes_per_project']) {
+		return -4;
+	}
+	
 
         return 1;
     }
