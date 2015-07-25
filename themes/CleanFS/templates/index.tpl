@@ -77,16 +77,18 @@
   <input type='submit' name='export_list' value='<?php echo Filters::noXSS(L('exporttasklist')); ?>'/>
 <style>
 #sc2,#s_searchstate{display:none;}
-#searchstateactions{color:#999;display:block;}
+#searchstateactions{color:#999;display:block;cursor:pointer;}
 #s_searchstate:checked ~ #sc2 {display:block;}
+#s_searchstate ~ label::before { content: "\25bc";}
+#s_searchstate:checked ~ label::before { content: "\25b2";}
 </style>
 <input id="s_searchstate" type="checkbox" name="advancedsearch"<?php if(Req::val('advancedsearch')): ?> checked="checked"<?php endif; ?>/>
-<label id="searchstateactions" for="s_searchstate"><span class="fa fa-caret-down"></span><?php echo Filters::noXSS(L('advanced')); ?></label>
+<label id="searchstateactions" for="s_searchstate"><?php echo Filters::noXSS(L('advanced')); ?></label>
 <div id="sc2" class="switchcontent">
 <?php if (!$user->isAnon()): ?>
 <fieldset>
   <div class="save_search"><label for="save_search" id="lblsaveas"><?php echo Filters::noXSS(L('saveas'));?></label>
-   <input class="text" type="text" value="<?php echo Filters::noXSS(Get::val('search_name')); ?>" id="save_search" name="search_name" size="15"/> <button onclick="savesearch('<?php echo Filters::escapeqs($_SERVER['QUERY_STRING']); ?>', '<?php echo Filters::noJsXSS($baseurl); ?>', '<?php echo Filters::noXSS(L('saving')); ?>')" type="button"><?php echo Filters::noXSS(L('OK')); ?></button>
+   <input class="text" type="text" value="<?php echo Filters::noXSS(Get::val('search_name')); ?>" id="save_search" name="search_name" size="15"/> <button onclick="savesearch('<?php echo Filters::escapeqs($_SERVER['QUERY_STRING']); ?>', '<?php echo Filters::noJsXSS($baseurl); ?>', '<?php echo Filters::noXSS(L('saving')); ?>', '<?php echo Filters::noJsXSS($_SESSION['csrftoken']); ?>')" type="button"><?php echo Filters::noXSS(L('OK')); ?></button>
   </div>
 </fieldset>
 <?php endif; ?>
@@ -257,7 +259,7 @@
             </div>
 </form>
 <?php endif; ?>
-
+<?php if (isset($_GET['string']) || $total): ?>
 <div id="tasklist">
 <?php echo tpl_form(Filters::noXSS(CreateURL('project', $proj->id, null, $_GET)),'massops',null,null,'id="massops"'); ?>
 <div>
@@ -266,7 +268,7 @@
     <tr>
         <th class="caret">
         </th>
-        <?php if (!$user->isAnon()): ?>
+        <?php if (!$user->isAnon() && $proj->id !=0): ?>
         <th class="ttcolumn">
             <?php if (!$user->isAnon() && $total): ?>
             <a title="<?php echo Filters::noXSS(L('toggleselected')); ?>" href="javascript:ToggleSelected('massops')" onclick="massSelectBulkEditCheck();">
@@ -322,7 +324,7 @@
     <tr id="task<?php echo $task_details['task_id']; ?>" class="severity<?php echo Filters::noXSS($task_details['task_severity']); ?>" onmouseover="Show(this,<?php echo $task_details['task_id']; ?>)" onmouseout="Hide(this, <?php echo $task_details['task_id']; ?>)">
         <td class="caret">
         </td>
-        <?php if (!$user->isAnon()): ?>
+        <?php if (!$user->isAnon() && $proj->id !=0): ?>
         <td class="ttcolumn">
             <input class="ticktask" type="checkbox" name="ids[]" onclick="BulkEditCheck()" value="<?php echo Filters::noXSS($task_details['task_id']); ?>"/>
         </td>
@@ -366,9 +368,8 @@
     </tr>
 </table>
 
-<!--- Bulk editing Tasks --->
-<?php if (!$proj->id == 0): ?>
-<?php if (!$user->isAnon() && $total): ?>
+<!-- Bulk editing Tasks -->
+<?php if (!$user->isAnon() && $proj->id !=0 && $total): ?>
 <!-- Grab fields wanted for this project so we only show those specified in the settings -->
 <script>Effect.Fade('bulk_edit_selectedItems');</script>
 <div id="bulk_edit_selectedItems" style="display:none">
@@ -554,9 +555,9 @@
             <!-- If there is only one choice of project, then don't bother showing it -->
             <?php if (count($fs->projects) > 1) { ?>
             <li>
-                <?php } else { ?>
+            <?php } else { ?>
             <li style="display:none">
-                <?php } ?>
+            <?php } ?>
                 <?php $projectsList = $fs->listProjects(); ?>
                 <?php array_unshift($projectsList,L('notspecified')); ?>
                 <label for="bulk_projects"><?php echo Filters::noXSS(L('attachedtoproject')); ?></label>
@@ -564,8 +565,6 @@
                     <?php echo tpl_options($projectsList); ?>
                 </select>
             </li>
-            </li>
-
         </ul>
         <button type="submit" name="updateselectedtasks" value="true"><?php echo Filters::noXSS(L('updateselectedtasks')); ?></button>
     </fieldset>
@@ -586,9 +585,8 @@
     </fieldset>
 
 </div>
-
-<?php endif ?>
-<?php endif ?>
+<?php endif; /* !$user->isAnon() && $proj-> !=0 && $total */ ?>
 </div>
 </form>
 </div>
+<?php endif; /* isset($_GET['string'] || $total */ ?>

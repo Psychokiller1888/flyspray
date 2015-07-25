@@ -29,7 +29,7 @@ class Flyspray
      * @access public
      * @var array
      */
-    public $prefs   = array();
+    public $prefs = array();
 
     /**
      * Max. file size for file uploads. 0 = no uploads allowed
@@ -408,18 +408,19 @@ class Flyspray
      */
     public static function listThemes()
     {
-        $theme_array = array();
-        if ($handle = opendir(dirname(dirname(__FILE__)) . '/themes/')) {
+        $themes = array();
+        $dirname = dirname(dirname(__FILE__));
+        if ($handle = opendir($dirname . '/themes/')) {
             while (false !== ($file = readdir($handle))) {
-                if ($file != '.' && $file != '..' && is_file(dirname(dirname(__FILE__)) . "/themes/$file/theme.css")) {
-                    $theme_array[] = $file;
+                if (substr($file,0,1) != '.' && is_dir("$dirname/themes/$file") && is_file("$dirname/themes/$file/theme.css")) {
+                    $themes[] = $file;
                 }
             }
             closedir($handle);
         }
 
-        sort($theme_array);
-        return $theme_array;
+        sort($themes);
+        return $themes;
     } // }}}
     // List a project's group {{{
     /**
@@ -791,6 +792,8 @@ class Flyspray
      */
     public static function setCookie($name, $val, $time = null, $path=null, $domain=null, $secure=false, $httponly=false)
     {
+	global $conf;
+	
         if (null===$path){
             $url = parse_url($GLOBALS['baseurl']);
         }else{
@@ -804,7 +807,7 @@ class Flyspray
             $domain='';
         }
         if(null===$secure){
-            $secure=false;
+            $secure = isset($conf['general']['securecookies']) ? $conf['general']['securecookies'] : false;
         }
         if((strlen($name) + strlen($val)) > 4096) {
             //violation of the protocol
@@ -824,6 +827,7 @@ class Flyspray
      */
     public static function startSession()
     {
+    	global $conf;
         if (defined('IN_FEED') || php_sapi_name() === 'cli') {
             return;
         }
@@ -868,7 +872,7 @@ class Flyspray
 
         $url = parse_url($GLOBALS['baseurl']);
         session_name('flyspray');
-        session_set_cookie_params(0,$url['path'],'','', TRUE);
+        session_set_cookie_params(0,$url['path'],'', (isset($conf['general']['securecookies'])? $conf['general']['securecookies']:false), TRUE);
         session_start();
         if(!isset($_SESSION['csrftoken'])){
                 $_SESSION['csrftoken']=rand(); # lets start with one anti csrf token secret for the session and see if it's simplicity is good enough (I hope together with enforced Content Security Policies)

@@ -239,6 +239,8 @@ $language = array(
 'attachedtoproject'       => 'Attached to Project',
 'reminders'               => 'Reminders',
 'system'                  => 'System',
+'systemvalues'            => 'System wide list values',
+'projectvalues'           => 'Project specific list values',
 'remindthisuser'          => 'Remind this user',
 'thisoften'               => 'This often',
 'startafter'              => 'Wait before starting reminders',
@@ -1019,5 +1021,8 @@ Regards,',
 'votesperproject'         => 'User\'s limit of votes per project',
 'votelimitreached'        => 'You reached your vote limit for this project. See your profile page for which tasks you currently vote. There you can also take back votes. So we can see what tasks are most important for you. Solved tasks get your vote back into your available voting limit.',
 'myvotes'                 => 'My Votes',
+'tag'                     => 'Tag',
+'tags'                    => 'Tags',
+'novalues'                => 'no entries',
 );
 ?>

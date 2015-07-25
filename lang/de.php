@@ -250,6 +250,8 @@ $translation = array(
 'attachedtoproject'       => 'gehört zu Projekt',
 'reminders'               => 'Erinnerungen',
 'system'                  => 'System',
+'systemvalues'            => 'Systemweite Listenwerte',
+'projectvalues'           => 'Projektspezifische Listenwerte',
 'remindthisuser'          => 'diesen Benutzer',
 'thisoften'               => 'so oft erinnern',
 'startafter'              => 'Zeit bis zur ersten Erinnerung',
@@ -371,7 +373,7 @@ $translation = array(
 'dueversion'              => 'fällig in Version',
 'lastedit'                => 'zuletzt geändert',
 'os'                      => 'Betriebssystem',
-'reportedin'              => 'Betrifft Version',
+'reportedin'              => 'betrifft Version',
 'taskrange'               => 'zeige Aufgaben %d - %d von %d',
 'noresults'               => 'Ihre Suche ergab keine Treffer.',
 'takeaction'              => 'ausführen',
@@ -781,7 +783,7 @@ $translation = array(
 'stats'                   => 'Statistik',
 'totaltasks'              => 'Aufgaben insgesamt',
 'mostwanted'              => 'häufig angefragte Aufgaben',
-'defaultentry'            => 'Zeige auf der der Startseite',
+'defaultentry'            => 'Zeige auf der Startseite',
 'toplevel'                => 'Top Level Ansicht',
 'overview'                => 'Überblick',
 'error#'                  => 'FEHLER #',
@@ -1011,6 +1013,9 @@ $translation = array(
 'votesperproject'         => 'Stimmen pro Projekt',
 'votelimitreached'        => 'Sie haben die maximale Anzahl an Stimmen erreicht. Wird eine Aufgabe, für die Sie gestimmt haben geschlossen, wird ihre Stimme freigegeben. Oder Sie ziehen auf ihrer Profilseite Stimmen zurück, um wieder freie Stimmen zu bekommen.',
 'myvotes'                 => 'Meine Stimmen',
+'tag'                     => 'Schildchen',
+'tags'                    => 'Schildchen',
+'novalues'                => 'keine Einträge',
 );
 
 ?>
