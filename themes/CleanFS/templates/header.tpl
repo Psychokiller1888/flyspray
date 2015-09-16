@@ -1,12 +1,13 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="<?php echo Filters::noXSS(L('locale')); ?>" xml:lang="<?php echo Filters::noXSS(L('locale')); ?>">
-  <head>
-    <title><?php echo Filters::noXSS($this->_title); ?></title>
+<head>
+<title><?php echo Filters::noXSS($this->_title); ?></title>
 
     <meta name="description" content="Flyspray, a Bug Tracking System written in PHP." />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta http-equiv="Content-Script-Type" content="text/javascript" />
     <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <?php if(trim($this->get_image('favicon'))): ?>
     <link rel="icon" type="image/png" href="<?php echo Filters::noXSS($this->get_image('favicon')); ?>" />
     <?php endif; ?>
@@ -60,14 +61,27 @@
         ?>window.setTimeout('Effect.Fade(\'errorbar\', {duration:.3})', 8000);<?php endif ?>" class="<?php echo isset($do) ? Filters::noXSS($do) : 'index'; ?>">
 
     <!-- Display title and logo if desired -->
-    <h1 id="title"><a href="<?php echo Filters::noXSS($baseurl); ?>">
-	<?php if ($fs->prefs['logo']) { ?>
-		<img src="<?php echo Filters::noXSS($baseurl.'/'.$fs->prefs['logo']); ?>" />
-	<?php } ?>
-	<?php echo Filters::noXSS($proj->prefs['project_title']); ?>
+    <h1 id="title">
+	<a href="<?php echo Filters::noXSS($baseurl); ?>">
+		<?php if ($fs->prefs['logo']) { ?>
+			<img src="<?php echo Filters::noXSS($baseurl.'/'.$fs->prefs['logo']); ?>" />
+		<?php } ?>
+		<?php echo Filters::noXSS($proj->prefs['project_title']); ?>
+	</a>
 
-    </a></h1>
-
+	<div id="support">
+		<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+		<!-- Flyspray App Header2 -->
+		<ins class="adsbygoogle"
+		     style="display:block"
+		     data-ad-client="ca-pub-1201923297792693"
+		     data-ad-slot="2049892367"
+		     data-ad-format="auto"></ins>
+		<script>
+			(adsbygoogle = window.adsbygoogle || []).push({});
+		</script>
+	</div>
+    </h1>
     <?php $this->display('links.tpl'); ?>
 
     <?php if (isset($_SESSION['SUCCESS']) && isset($_SESSION['ERROR'])): ?>
@@ -78,9 +92,33 @@
     <div id="successbar" class="success bar" onclick="this.style.display='none'"><div class="errpadding"><?php echo Filters::noXSS($_SESSION['SUCCESS']); ?></div></div>
     <?php endif; ?>
 
+	<div id="support1">
+		<div id="support2">
+			<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+			<ins class="adsbygoogle"
+			     style="display:inline-block;width:728px;height:15px"
+			     data-ad-client="ca-pub-1201923297792693"
+			     data-ad-slot="3886552369"></ins>
+			<script>
+				(adsbygoogle = window.adsbygoogle || []).push({});
+			</script>
+		</div>
+
+		<div id="support3">
+			<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+			<!-- Flyspray App Link 2 -->
+			<ins class="adsbygoogle"
+			     style="display:inline-block;width:728px;height:15px"
+			     data-ad-client="ca-pub-1201923297792693"
+			     data-ad-slot="5363285561"></ins>
+			<script>
+				(adsbygoogle = window.adsbygoogle || []).push({});
+			</script>
+		</div>
+	</div>
+
     <div id="content">
       <div class="clear"></div>
-
       <?php $show_message = explode(' ', $fs->prefs['pages_welcome_msg']);
         $actions = explode('.', Req::val('action'));
         if ($fs->prefs['intro_message'] &&

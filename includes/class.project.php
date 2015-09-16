@@ -17,6 +17,24 @@ class Project
             if ($db->countRows($sql)) {
                 $this->prefs = $db->FetchRow($sql);
                 $this->id    = (int) $this->prefs['project_id'];
+                $sortrules=explode(',', $this->prefs['default_order_by']);
+                foreach($sortrules as $rule){
+                        $last_space=strrpos($rule, ' ');
+                        if ($last_space === false){
+                        	# temporarly
+                                $sorting[]=array('field'=>$rule, 'dir'=> $this->prefs['default_order_by_dir']);
+                                # future - when column default_order_by_dir removed from project table:
+                                #$sorting[]=array('field'=>$rule, 'dir'=>'desc');
+                        }else{
+                                $sorting[]=array(
+                                        'field'=>substr($rule, $last_space),
+                                        'dir'=>  substr($rule, 0, $last_space)
+                                );
+                        }
+                }
+                # using an extra name until default_order_by_dir completely removed
+                $this->prefs['sorting']=$sorting; # we can use this also for highlighting in template which columns are sorted by default in task list!
+                
                 return;
             }
         }
@@ -28,6 +46,7 @@ class Project
         $this->prefs['lang_code']   = $fs->prefs['lang_code'];
         $this->prefs['project_is_active'] = 1;
         $this->prefs['others_view'] = 1;
+        $this->prefs['others_viewroadmap'] = 0;
         $this->prefs['intro_message'] = '';
         $this->prefs['anon_open'] = 0;
         $this->prefs['feed_img_url'] = '';
@@ -40,7 +59,16 @@ class Project
         $this->prefs['estimated_effort_format'] = 0;
         $this->prefs['current_effort_done_format'] = 0;
     	$this->prefs['default_order_by'] = 'id';
-    	$this->prefs['default_order_by_direction'] = 'desc';
+    	$this->prefs['default_order_by_dir'] = 'desc';
+
+        # future field content examples of 'default_order_by':
+        #$this->prefs['default_order_by'] = 'id DESC';
+        #$this->prefs['default_order_by'] = 'severity DESC, priority DESC'; 
+
+        $this->prefs['sorting'] = array(
+                0=>array('field'=>'id','dir'=>'desc'),
+                1=>array('field'=>'severity','dir'=>'desc')
+        );
     }
 
     # 20150219 peterdd: deprecated
@@ -69,13 +97,12 @@ class Project
 
         $join = 't.'.join(" = l.{$type}_id OR t.", $join)." = l.{$type}_id";
 
-        return "SELECT  l.*, count(t.task_id) AS used_in_tasks
-                  FROM  {list_{$type}} l
-             LEFT JOIN  {tasks}        t  ON ($join)
-                            AND t.project_id = l.project_id
-                 WHERE  l.project_id = ?
-              GROUP BY  $groupby
-              ORDER BY  list_position";
+        return "SELECT l.*, count(t.task_id) AS used_in_tasks
+                  FROM {list_{$type}} l
+             LEFT JOIN {tasks} t ON ($join) AND (l.project_id=0 OR t.project_id = l.project_id)
+                 WHERE l.project_id = ?
+              GROUP BY $groupby
+              ORDER BY list_position";
     }
 
     /**
@@ -260,7 +287,55 @@ class Project
                     $this->_list_sql('status'), array($this->id));
         }
     }
+	
+	/* between FS0.9.9.7 to FS1.0alpha2 */
+	/*
+	function listTags($pm = false)
+        {
+                global $db;
+                if ($pm) {
+                        $result= $db->Query('SELECT tag AS tag_name, 1 AS list_position, 1 AS show_in_list, COUNT(*) AS used_in_tasks
+                                FROM {tags} tg
+                                JOIN {tasks} t ON t.task_id=tg.task_id
+                                WHERE t.project_id=?
+                                GROUP BY tag
+                                ORDER BY tag', array($this->id));
+                } else {
+                        $result= $db->Query('SELECT tag AS tag_name, 1 AS list_position, 1 AS show_in_list, COUNT(*) AS used_in_tasks
+                                FROM {tags}
+                                GROUP BY tag
+                                ORDER BY tag');
+                }
 
+                $tags=array();
+                while ($row = $db->FetchRow($result)) {
+                        $tags[]=$row;
+                }
+                return $tags;
+        }
+	*/
+	/* rewrite of tags feature, FS1.0beta1 */ 
+	
+	function listTags($pm = false)
+	{
+		global $db;
+		if ($pm) {
+			$result= $db->Query('SELECT tg.*, COUNT(tt.task_id) AS used_in_tasks
+				FROM {list_tag} tg
+				LEFT JOIN {task_tag} tt ON tt.tag_id=tg.tag_id
+				LEFT JOIN {tasks} t ON t.task_id=tt.task_id
+				WHERE tg.project_id=?
+				GROUP BY tg.tag_id
+				ORDER BY tg.list_position', array($this->id));
+			$tags=array();
+			while ($row = $db->FetchRow($result)) {
+				$tags[]=$row;
+			}
+			return $tags;
+		} else {
+			return $db->cached_query('tag', $this->_list_sql('tag'), array($this->id));
+ 		}
+	}
     // }}}
 
     // This should really be moved to class Flyspray like some other ones too.

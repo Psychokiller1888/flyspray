@@ -661,7 +661,7 @@ class TextFormatter
             return call_user_func(array($conf['general']['syntax_plugin'] . '_TextFormatter', 'render'),
                                   $text, $type, $id, $instructions);
         } else {
-            $text=strip_tags($text, '<br><br/><p><h2><h3><h4><h5><h5><h6><blockquote><a><img><u><b><strong><s><ins><del><ul><ol><li><table><caption><tr><col><colgroup><td><th><thead><tfoot><tbody>');
+            $text=strip_tags($text, '<br><br/><p><h2><h3><h4><h5><h5><h6><blockquote><a><img><u><b><strong><s><ins><del><ul><ol><li><table><caption><tr><col><colgroup><td><th><thead><tfoot><tbody><code>');
             if ($conf['general']['syntax_plugin'] && $conf['general']['syntax_plugin'] != 'none') {
                 $text='Missing output plugin '.$conf['general']['syntax_plugin'].'!'
                 .'<br/>Couldn\'t call '.$conf['general']['syntax_plugin'].'_TextFormatter::render()'
@@ -674,7 +674,7 @@ class TextFormatter
             //Have removed this as creating additional </br> lines even though <p> is already dealing with it
             //possibly an conversion from Dokuwiki syntax to html issue, left in in case anyone has issues and needs to comment out
             //$text = ' ' . nl2br($text) . ' ';
-
+            
             // Change FS#123 into hyperlinks to tasks
             return preg_replace_callback("/\b(?:FS#|bug )(\d+)\b/", 'tpl_fast_tasklink', trim($text));
         }
@@ -709,6 +709,7 @@ class TextFormatter
 }
 // }}}
 // Format Date {{{
+// Questionable if this function belongs in this class. Usages also elsewhere and not UI-related.
 function formatDate($timestamp, $extended = false, $default = '')
 {
     global $db, $conf, $user, $fs;
@@ -858,9 +859,10 @@ function CreateURL($type, $arg1 = null, $arg2 = null, $arg3 = array())
             case 'project':
                 $return = $url . 'proj' . $arg1;
                 break;
-
-            case 'toplevel':
+                
             case 'roadmap':
+            case 'toplevel':
+            case 'gantt':
             case 'index':
             case 'newtask':
             case 'newmultitasks':
@@ -929,6 +931,7 @@ function CreateURL($type, $arg1 = null, $arg2 = null, $arg3 = array())
 
             case 'roadmap':
             case 'toplevel':
+            case 'gantt':
             case 'index':
             case 'newtask':
             case 'newmultitasks':

@@ -162,8 +162,9 @@ abstract class Backend
                         array($row['task_id'], $user->id));
 
             if ($db->affectedRows()) {
+                $current_proj = new Project($row['project_id']);
                 Flyspray::logEvent($row['task_id'], 19, $user->id, implode(' ', Flyspray::GetAssignees($row['task_id'])));
-                $notify->Create(NOTIFY_OWNERSHIP, $row['task_id']);
+                $notify->Create(NOTIFY_OWNERSHIP, $row['task_id'], null, null, NOTIFY_BOTH, $current_proj->prefs['lang_code']);
             }
 
             if ($row['item_status'] == STATUS_UNCONFIRMED || $row['item_status'] == STATUS_NEW) {
@@ -211,8 +212,9 @@ abstract class Backend
             $db->Replace('{assigned}', array('user_id'=> $user->id, 'task_id'=> $row['task_id']), array('user_id','task_id'));
 
             if ($db->affectedRows()) {
+                $current_proj = new Project($row['project_id']);
                 Flyspray::logEvent($row['task_id'], 29, $user->id, implode(' ', Flyspray::GetAssignees($row['task_id'])));
-                $notify->Create(NOTIFY_ADDED_ASSIGNEES, $row['task_id']);
+                $notify->Create(NOTIFY_ADDED_ASSIGNEES, $row['task_id'], null, null, NOTIFY_BOTH, $current_proj->prefs['lang_code']);
             }
 
             if ($row['item_status'] == STATUS_UNCONFIRMED || $row['item_status'] == STATUS_NEW) {
@@ -301,7 +303,7 @@ abstract class Backend
      */
     public static function add_comment($task, $comment_text, $time = null)
     {
-        global $db, $user, $notify;
+        global $db, $user, $notify, $proj;
 
         if (!($user->perms('add_comments', $task['project_id']) && (!$task['is_closed'] || $user->perms('comment_closed', $task['project_id'])))) {
             return false;
@@ -313,25 +315,20 @@ abstract class Backend
 
         $time =  !is_numeric($time) ? time() : $time ;
 
-        $db->Query('INSERT INTO  {comments}
-                                 (task_id, date_added, last_edited_time, user_id, comment_text)
-                         VALUES  ( ?, ?, ?, ?, ? )',
+        $db->Query('INSERT INTO {comments}
+                                (task_id, date_added, last_edited_time, user_id, comment_text)
+                         VALUES ( ?, ?, ?, ?, ? )',
                     array($task['task_id'], $time, $time, $user->id, $comment_text));
-
-        $result = $db->Query('SELECT  comment_id
-                                FROM  {comments}
-                               WHERE  task_id = ?
-                            ORDER BY  comment_id DESC',
-                            array($task['task_id']), 1);
-        $cid = $db->FetchOne($result);
-
+        $cid = $db->Insert_ID();
+	Backend::upload_links($task['task_id'], $cid);
         Flyspray::logEvent($task['task_id'], 4, $cid);
 
         if (Backend::upload_files($task['task_id'], $cid)) {
-            $notify->Create(NOTIFY_COMMENT_ADDED, $task['task_id'], 'files');
+            $notify->Create(NOTIFY_COMMENT_ADDED, $task['task_id'], 'files', null, NOTIFY_BOTH, $proj->prefs['lang_code']);
         } else {
-            $notify->Create(NOTIFY_COMMENT_ADDED, $task['task_id']);
+            $notify->Create(NOTIFY_COMMENT_ADDED, $task['task_id'], null, null, NOTIFY_BOTH, $proj->prefs['lang_code']);
         }
+	
 
         return true;
     }
@@ -403,12 +400,16 @@ abstract class Backend
                         $user->id, time()));
 
             // Fetch the attachment id for the history log
+            /*
             $result = $db->Query('SELECT  attachment_id
                                     FROM  {attachments}
                                    WHERE  task_id = ?
                                 ORDER BY  attachment_id DESC',
                     array($task_id), 1);
             Flyspray::logEvent($task_id, 7, $db->fetchOne($result), $_FILES[$source]['name'][$key]);
+            */
+            $attid = $db->Insert_ID();
+            Flyspray::logEvent($task_id, 7, $attid, $_FILES[$source]['name'][$key]);
         }
 
         return $res;
@@ -518,6 +519,44 @@ abstract class Backend
         return utf8_keepalphanum($user_name);
     }
 
+    public static function GetAdminAddresses() {
+        global $db;
+
+        $emails = array();
+        $jabbers = array();
+        $onlines = array();
+        
+        $sql = $db->Query('SELECT DISTINCT u.user_id, u.email_address, u.jabber_id,
+                                  u.notify_online, u.notify_type, u.notify_own, u.lang_code
+                             FROM {users} u
+                             JOIN {users_in_groups} ug ON u.user_id = ug.user_id
+                             JOIN {groups} g ON g.group_id = ug.group_id
+                             WHERE g.is_admin = 1 AND u.account_enabled = 1');
+ 
+	Notifications::AssignRecipients($db->FetchAllArray($sql), $emails, $jabbers, $onlines);
+        
+        return array($emails, $jabbers, $onlines);
+    }
+
+    public static function GetProjectManagerAddresses($project_id) {
+        global $db;
+ 
+        $emails = array();
+        $jabbers = array();
+        $onlines = array();
+        
+        $sql = $db->Query('SELECT DISTINCT u.user_id, u.email_address, u.jabber_id,
+                                  u.notify_online, u.notify_type, u.notify_own, u.lang_code
+                             FROM {users} u
+                             JOIN {users_in_groups} ug ON u.user_id = ug.user_id
+                             JOIN {groups} g ON g.group_id = ug.group_id
+                             WHERE g.manage_project = 1 AND g.project_id = ? AND u.account_enabled = 1',
+                array($project_id));
+
+	Notifications::AssignRecipients($db->FetchAllArray($sql), $emails, $jabbers, $onlines);
+        
+        return array($emails, $jabbers, $onlines);
+    }
     /**
      * Creates a new user
      * @param string $user_name
@@ -563,6 +602,17 @@ abstract class Backend
             $password = substr(md5(uniqid(mt_rand(), true)), 0, mt_rand(8, 12));
         }
 
+        // Check the emails before inserting anything to database.
+        $emailList = explode(';',$email);
+        foreach ($emailList as $mail) {	//Still need to do: check email
+            $count = $db->Query("SELECT COUNT(*) FROM {user_emails} WHERE email_address = ?",array($mail));
+            $count = $db->fetchOne($count);
+            if ($count > 0) {
+                Flyspray::show_error("Email address has alredy been taken");
+                return false;
+            }
+        }
+        
         $db->Query("INSERT INTO  {users}
                              ( user_name, user_pass, real_name, jabber_id, profile_image, magic_url,
                                email_address, notify_type, account_enabled,
@@ -575,14 +625,8 @@ abstract class Backend
         // Get this user's id for the record
         $uid = Flyspray::UserNameToId($user_name);
 
-        $emailList = explode(';',$email);
-        foreach ($emailList as $mail) {	//Still need to do: check email
-            $count = $db->Query("SELECT COUNT(*) FROM {user_emails} WHERE email_address = ?",array($mail));
-            $count = $db->fetchOne($count);
-            if ($count > 0) {
-                Flyspray::show_error("Email address has alredy been taken");
-                return false;
-            } else if ($mail != '') {
+        foreach ($emailList as $mail) {
+            if ($mail != '') {
                 $db->Query("INSERT INTO {user_emails}(id,email_address,oauth_uid,oauth_provider) VALUES (?,?,?,?)",
                         array($uid,strtolower($mail),$oauth_uid, $oauth_provider));
             }
@@ -641,36 +685,26 @@ abstract class Backend
 
         // Send a user his details (his username might be altered, password auto-generated)
         // dont send notifications if the user logged in using oauth
-        if ( ! $oauth_provider ) {
-            $users_to_notify = array();
-            // Notify admins on new user registration
-            if( $fs->prefs['notify_registration'] ) {
-                // Gather list of admin users. An empty address that comes
-                // first will break sending notification. So does probably
-                // an invalid one.
-                $sql = $db->Query('SELECT DISTINCT email_address
-                                 FROM {users} u
-                            LEFT JOIN {users_in_groups} g ON u.user_id = g.user_id
-                                 WHERE g.group_id = 1 AND email_address <> \'\'');
-
-                // If the new user is not an admin, add him to the notification list.
-                // Should do this only if account is created as enabled, otherwise
-                // notification should be done when admin request is either accepted
-                // or denied, but we lack a really suitable notification, although
-                // NOTIFY_NEW_USER is quite close.
-                $admins = $db->FetchCol($sql);
-                if (count($admins)) {
-                    $users_to_notify = $admins;
-                }
-            }
-            if (!in_array($email, $users_to_notify)) {
-                $users_to_notify[] = $email;
+        if (!$oauth_provider) {
+            $recipients = self::GetAdminAddresses();
+            $newuser = array();
+            
+            // Add the right message here depending on $enabled.
+            if ($enabled === 0) {
+                $newuser[0][$email] = array('recipient' => $email, 'lang' => $fs->prefs['lang_code']);
+                
+            } else {
+                $newuser[0][$email] = array('recipient' => $email, 'lang' => $fs->prefs['lang_code']);
             }
 
             // Notify the appropriate users
             $notify->Create(NOTIFY_NEW_USER, null,
                             array($baseurl, $user_name, $real_name, $email, $jabber_id, $password, $auto),
-                            $users_to_notify, NOTIFY_EMAIL);
+                            $recipients, NOTIFY_EMAIL);
+            // And also the new user
+            $notify->Create(NOTIFY_OWN_REGISTRATION, null,
+                            array($baseurl, $user_name, $real_name, $email, $jabber_id, $password, $auto),
+                            $newuser, NOTIFY_EMAIL);
         }
 
         // If the account is created as not enabled, no matter what any
@@ -1036,36 +1070,61 @@ abstract class Backend
             $sql_values[] = $value;
         }
 
-
+	/*
+         * TODO: At least with PostgreSQL, this has caused the sequence to be
+         * out of sync with reality. Must be fixed in upgrade process. Check
+         * what's the situation with MySQL. (It's fine, it updates the value even
+         * if the column was manually adjusted. Remove this whole block later.)
         $result = $db->Query('SELECT  MAX(task_id)+1
                                 FROM  {tasks}');
         $task_id = $db->FetchOne($result);
         $task_id = $task_id ? $task_id : 1;
-
+	*/
         //now, $task_id is always the first element of $sql_values
-        array_unshift($sql_keys, 'task_id');
-        array_unshift($sql_values, $task_id);
+        #array_unshift($sql_keys, 'task_id');
+        #array_unshift($sql_values, $task_id);
 
         $sql_keys_string = join(', ', $sql_keys);
         $sql_placeholder = $db->fill_placeholders($sql_values);
 
-        $result = $db->Query("INSERT INTO  {tasks}
-                                 ($sql_keys_string)
-                         VALUES  ($sql_placeholder)", $sql_values);
+        $result = $db->Query("INSERT INTO {tasks}
+                                ($sql_keys_string)
+                         VALUES ($sql_placeholder)", $sql_values);
+	$task_id=$db->Insert_ID();
+	
+	Backend::upload_links($task_id);
+	
+	// create tags
+	if (isset($args['tags'])) {
+		$tagList = explode(';', $args['tags']);
+		$tagList = array_map('strip_tags', $tagList);
+		$tagList = array_map('trim', $tagList);
+		$tagList = array_unique($tagList); # avoid duplicates for inputs like: "tag1;tag1" or "tag1; tag1<p></p>"
+		foreach ($tagList as $tag){
+			if ($tag == ''){
+				continue;
+			}
+			
+			# old tag feature
+			#$result2 = $db->Query("INSERT INTO {tags} (task_id, tag) VALUES (?,?)",array($task_id,$tag));
+			
+			# new tag feature. let's do it in 2 steps, it is getting too complicated to make it cross database compatible, drawback is possible (rare) race condition (use transaction?)
+			$res=$db->Query("SELECT tag_id FROM {list_tag} WHERE (project_id=0 OR project_id=?) AND tag_name LIKE ? ORDER BY project_id", array($proj->id,$tag) );
+			if($t=$db->FetchRow($res)){   
+				$tag_id=$t['tag_id'];
+			} else{ 
+				if( $proj->prefs['freetagging']==1){
+					# add to taglist of the project
+					$db->Query("INSERT INTO {list_tag} (project_id,tag_name) VALUES (?,?)", array($proj->id,$tag));
+					$tag_id=$db->Insert_ID();
+				} else{
+					continue;
+				}
+			};
+			$db->Query("INSERT INTO {task_tag}(task_id,tag_id) VALUES(?,?)", array($task_id, $tag_id) );
+		}
+	}
 
-	/////////////////////////////////////Add tags///////////////////////////////////////
-    if (isset($args['tags'])) {
-    	$tagList = explode(';', $args['tags']);
-    	foreach ($tagList as $tag)
-    	{
-    		if ($tag == '')
-    			continue;
-    		$result2 = $db->Query("INSERT INTO {tags} (task_id, tag)
-		                           VALUES (?,?)",array($task_id,$tag));
-    	}
-    }
-
-        ////////////////////////////////////////////////////////////////////////////////////
         // Log the assignments and send notifications to the assignees
         if (isset($args['rassigned_to']) && is_array($args['rassigned_to']))
         {
@@ -1078,7 +1137,7 @@ abstract class Backend
             Flyspray::logEvent($task_id, 14, implode(' ', $args['rassigned_to']));
 
             // Notify the new assignees what happened.  This obviously won't happen if the task is now assigned to no-one.
-            $notify->Create(NOTIFY_NEW_ASSIGNEE, $task_id, null, $notify->SpecificAddresses($args['rassigned_to']));
+            $notify->Create(NOTIFY_NEW_ASSIGNEE, $task_id, null, $notify->SpecificAddresses($args['rassigned_to']), NOTIFY_BOTH, $proj->prefs['lang_code']);
         }
 
         // Log that the task was opened
@@ -1128,9 +1187,9 @@ abstract class Backend
 
         // Create the Notification
         if (Backend::upload_files($task_id)) {
-            $notify->Create(NOTIFY_TASK_OPENED, $task_id, 'files');
+            $notify->Create(NOTIFY_TASK_OPENED, $task_id, 'files', null, NOTIFY_BOTH, $proj->prefs['lang_code']);
         } else {
-            $notify->Create(NOTIFY_TASK_OPENED, $task_id);
+            $notify->Create(NOTIFY_TASK_OPENED, $task_id, null, null, NOTIFY_BOTH, $proj->prefs['lang_code']);
         }
 
         // If the reporter wanted to be added to the notification list
@@ -1139,7 +1198,11 @@ abstract class Backend
         }
 
         if ($user->isAnon()) {
-            $notify->Create(NOTIFY_ANON_TASK, $task_id, $token, $args['anon_email'], NOTIFY_EMAIL);
+            $anonuser = array();
+            $anonuser[$email] = array('recipient' => $args['anon_email'], 'lang' => $fs->prefs['lang_code']);
+            $recipients = array($anonuser);
+            $notify->Create(NOTIFY_ANON_TASK, $task_id, $token,
+                            $recipients, NOTIFY_EMAIL, $proj->prefs['lang_code']);
         }
 
         return array($task_id, $token);
@@ -1157,7 +1220,7 @@ abstract class Backend
      */
     public static function close_task($task_id, $reason, $comment, $mark100 = true)
     {
-        global $db, $notify, $user;
+        global $db, $notify, $user, $proj;
         $task = Flyspray::GetTaskDetails($task_id);
 
         if (!$user->can_close_task($task)) {
@@ -1182,7 +1245,7 @@ abstract class Backend
             Flyspray::logEvent($task_id, 3, 100, $task['percent_complete'], 'percent_complete');
         }
 
-        $notify->Create(NOTIFY_TASK_CLOSED, $task_id);
+        $notify->Create(NOTIFY_TASK_CLOSED, $task_id, null, null, NOTIFY_BOTH, $proj->prefs['lang_code']);
         Flyspray::logEvent($task_id, 2, $reason, $comment);
 
         // If there's an admin request related to this, close it
@@ -1243,24 +1306,31 @@ abstract class Backend
         // Joins absolutely needed for user viewing rights
         $from = ' {tasks} t
 -- All tasks have a project!
-JOIN {projects} p ON t.project_id = p.project_id
--- Global group always exists (actually not for anonymous users...)
-LEFT JOIN ({groups} gpg
+JOIN {projects} p ON t.project_id = p.project_id';
+	
+	// Not needed for anonymous users
+        if (!$user->isAnon()) {
+$from .= ' -- Global group always exists
+JOIN ({groups} gpg
     JOIN {users_in_groups} gpuig ON gpg.group_id = gpuig.group_id AND gpuig.user_id = ?		
 ) ON gpg.project_id = 0
 -- Project group might exist or not.
 LEFT JOIN ({groups} pg
     JOIN {users_in_groups} puig ON pg.group_id = puig.group_id AND puig.user_id = ?	
-) ON pg.project_id = t.project_id
-LEFT JOIN {assigned} ass ON t.task_id = ass.task_id
-';
+) ON pg.project_id = t.project_id';
+	    $sql_params[] = $user->id;
+	    $sql_params[] = $user->id;
+	}
+	
+	// Keep this always, could also used for showing assigned users for a task.
+	// Keeps the overall logic somewhat simpler.
+	$from .= ' LEFT JOIN {assigned} ass ON t.task_id = ass.task_id';
+	$from .= ' LEFT JOIN {task_tag} tt ON t.task_id = tt.task_id';
         $cfrom = $from;
-        $sql_params[] = $user->id;
-        $sql_params[] = $user->id;
         
         // Seems resution name really is needed...
         $select .= 'lr.resolution_name, ';
-        $from .= 'LEFT JOIN {list_resolution} lr ON t.resolution_reason = lr.resolution_id ';
+        $from .= ' LEFT JOIN {list_resolution} lr ON t.resolution_reason = lr.resolution_id ';
         $groupby .= 'lr.resolution_name, ';
         
         // Otherwise, only join tables which are really necessary to speed up the db-query
@@ -1361,25 +1431,76 @@ LEFT JOIN {list_os} los ON t.operating_system = los.os_id ';
             $select .= ' (SELECT SUM(ef.effort) FROM {effort} ef WHERE t.task_id = ef.task_id) AS effort, ';
         }
 
-        if (array_get($args, 'dev') || in_array('assignedto', $visible)) {
-            $select .= ' MIN(u.real_name) AS assigned_to_name, ';
-            $select .= ' (SELECT COUNT(assc.user_id) FROM {assigned} assc WHERE assc.task_id = t.task_id)  AS num_assigned, ';
-            // assigned table is now always included in join
-            $from .= '
--- LEFT JOIN {assigned} ass ON t.task_id = ass.task_id
+	if (array_get($args, 'dev') || in_array('assignedto', $visible)) {
+		# not every db system has this feature out of box
+		if('mysql' == $db->dblink->dataProvider){
+			#$select .= ' GROUP_CONCAT(u.real_name) AS assigned_to_name, ';
+			# without distinct i see multiple times each assignee
+			# maybe performance penalty due distinct?, solve by better groupby construction?
+			$select .= ' GROUP_CONCAT(DISTINCT u.real_name) AS assigned_to_name, ';
+			# maybe later for building links to users
+			#$select .= ' GROUP_CONCAT(DISTINCT u.real_name ORDER BY u.user_id) AS assigned_to_name, ';
+			#$select .= ' GROUP_CONCAT(DISTINCT u.user_id ORDER BY u.user_id) AS assignedids, ';
+		}else{
+			$select .= ' MIN(u.real_name) AS assigned_to_name, ';
+			$select .= ' (SELECT COUNT(assc.user_id) FROM {assigned} assc WHERE assc.task_id = t.task_id)  AS num_assigned, ';
+		}
+		// assigned table is now always included in join
+		$from .= '
 LEFT JOIN {users} u ON ass.user_id = u.user_id ';
-            $groupby .= 'ass.task_id, ';
-            if (array_get($args, 'dev')) {
-                $cfrom .= '
--- LEFT JOIN {assigned} ass ON t.task_id = ass.task_id
+		$groupby .= 'ass.task_id, ';
+		if (array_get($args, 'dev')) {
+			$cfrom .= '
 LEFT JOIN {users} u ON ass.user_id = u.user_id ';
-		$cgroupbyarr[] = 't.task_id';
-                $cgroupbyarr[] = 'ass.task_id';
-            }
+			$cgroupbyarr[] = 't.task_id';
+			$cgroupbyarr[] = 'ass.task_id';
+		}
+	}
+        
+	# not every db system has this feature out of box
+	if('mysql' == $db->dblink->dataProvider){
+		# without distinct i see multiple times each tag (when task has several assignees too)
+		$select .= ' GROUP_CONCAT(DISTINCT tg.tag_name ORDER BY tg.list_position) AS tags, ';
+		$select .= ' GROUP_CONCAT(DISTINCT tg.tag_id ORDER BY tg.list_position) AS tagids, ';
+	}else{
+		$select .= ' MIN(tg.tag_name) AS tags, ';
+		$select .= ' (SELECT COUNT(tt.tag_id) FROM {task_tag} tt WHERE tt.task_id = t.task_id)  AS tagnum, ';
+	}
+	// task_tag join table is now always included in join
+	$from .= '
+LEFT JOIN {list_tag} tg ON tt.tag_id = tg.tag_id ';
+	$groupby .= 'tt.task_id, ';
+	$cfrom .= '
+LEFT JOIN {list_tag} tg ON tt.tag_id = tg.tag_id ';
+	$cgroupbyarr[] = 't.task_id';
+	$cgroupbyarr[] = 'tt.task_id';
+
+
+	# use preparsed task description cache for dokuwiki when possible
+	if($conf['general']['syntax_plugin']=='dokuwiki' && FLYSPRAY_USE_CACHE==true){
+		$select.=' cache.content desccache, ';
+		$from.='
+LEFT JOIN {cache} cache ON t.task_id=cache.topic AND cache.type="task" ';
+	} else {
+            $select .= 'NULL AS desccache, ';
         }
 
         if (array_get($args, 'only_primary')) {
             $where[] = 'NOT EXISTS (SELECT 1 FROM {dependencies} dep WHERE dep.dep_task_id = t.task_id)';
+        }
+        
+        # feature FS#1600
+        if (array_get($args, 'only_blocker')) {
+            $where[] = 'EXISTS (SELECT 1 FROM {dependencies} dep WHERE dep.dep_task_id = t.task_id)';
+        }
+        
+        if (array_get($args, 'only_blocked')) {
+            $where[] = 'EXISTS (SELECT 1 FROM {dependencies} dep WHERE dep.task_id = t.task_id)';
+        }
+        
+        # feature FS#1599
+        if (array_get($args, 'only_unblocked')) {
+            $where[] = 'NOT EXISTS (SELECT 1 FROM {dependencies} dep WHERE dep.task_id = t.task_id)';
         }
 
         if (array_get($args, 'hide_subtasks')) {
@@ -1400,11 +1521,16 @@ LEFT JOIN {users} u ON ass.user_id = u.user_id ';
                 foreach($fs->projects as $p) {
                     $allowed[] = $p['project_id'];
                 }
-                $where[] = 't.project_id IN (' . implode(',', $allowed). ')';
+		if(count($allowed)>0){
+			$where[] = 't.project_id IN (' . implode(',', $allowed). ')';
+		}else{
+			$where[] = '0 = 1'; # always empty result
+		}
             }
         }
 
-        // process user viewing rights
+        // process users viewing rights, if not anonymous
+        if (!$user->isAnon()) {
  $where[] = '
 (   -- Begin block where users viewing rights are checked.
     -- Case everyone can see all project tasks anyway and task not private
@@ -1448,7 +1574,7 @@ LEFT JOIN {users} u ON ass.user_id = u.user_id ';
         $sql_params[] = $user->id;
         $sql_params[] = $user->id;
         $sql_params[] = $user->id;
-
+	}
         /// process search-conditions {{{
         $submits = array('type' => 'task_type', 'sev' => 'task_severity',
             'due' => 'closedby_version', 'reported' => 'product_version',
@@ -1548,22 +1674,46 @@ LEFT JOIN {users} u ON ass.user_id = u.user_id ';
         // Implementing setting "Default order by"
         if (!array_key_exists('order', $args)) {
             if ($proj->id) {
+                /*
                 $orderBy = $proj->prefs['default_order_by'];
                 $sort = $proj->prefs['default_order_by_dir'];
+                */
+
+                # future
+                $orderBy = $proj->prefs['sorting'][0]['field'];
+                $sort =    $proj->prefs['sorting'][0]['dir'];
+                if (count($proj->prefs['sorting']) >1){
+                        $orderBy2 =$proj->prefs['sorting'][1]['field'];
+                        $sort2=    $proj->prefs['sorting'][1]['dir'];
+                } else{
+                        $orderBy2='severity';
+                        $sort2='DESC';
+                }
+
             } else {
                 $orderBy = $fs->prefs['default_order_by'];
                 $sort = $fs->prefs['default_order_by_dir'];
+                # temp
+                $orderBy2='severity';
+                $sort2='DESC';
             }
         } else {
             $orderBy = $args['order'];
             $sort = $args['sort'];
+            $orderBy2='severity';
+            $sort2='desc';
         }
 
         // TODO: Fix this! If something is already ordered by task_id, there's
         // absolutely no use to even try to order by something else also. 
         $order_column[0] = $order_keys[Filters::enum(array_get($args, 'order', $orderBy), array_keys($order_keys))];
-        $order_column[1] = $order_keys[Filters::enum(array_get($args, 'order2', 'severity'), array_keys($order_keys))];
-        $sortorder = sprintf('%s %s, %s %s, t.task_id ASC', $order_column[0], Filters::enum(array_get($args, 'sort', $sort), array('asc', 'desc')), $order_column[1], Filters::enum(array_get($args, 'sort2', 'desc'), array('asc', 'desc')));
+        $order_column[1] = $order_keys[Filters::enum(array_get($args, 'order2', $orderBy2), array_keys($order_keys))];
+        $sortorder = sprintf('%s %s, %s %s, t.task_id ASC',
+        	$order_column[0],
+        	Filters::enum(array_get($args, 'sort', $sort), array('asc', 'desc')),
+        	$order_column[1],
+        	Filters::enum(array_get($args, 'sort2', $sort2), array('asc', 'desc'))
+        );
 
         $having = array();
         $dates = array('duedate' => 'due_date', 'changed' => $maxdatesql,
@@ -1605,9 +1755,16 @@ LEFT JOIN {users} u ON ass.user_id = u.user_id ';
             $where[] = '(' . implode((array_get($args, 'search_for_all') ? ' AND ' : ' OR '), $where_temp) . ')';
         }
 
-        if ($user->isAnon()) {
-            $where[] = 'p.others_view = 1 AND t.is_closed = 0 ';
-        }
+	if ($user->isAnon()) {
+		$where[] = 't.mark_private = 0 AND p.others_view = 1';
+		if(array_key_exists('status', $args)){
+			if (in_array('closed', $args['status']) && !in_array('open', $args['status'])) {
+				$where[] = 't.is_closed = 1';
+			} elseif (in_array('open', $args['status']) && !in_array('closed', $args['status'])) {
+				$where[] = 't.is_closed = 0';
+			}
+		}
+	}
 
         $where = (count($where)) ? 'WHERE ' . join(' AND ', $where) : '';
 
