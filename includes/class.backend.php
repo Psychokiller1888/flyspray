@@ -303,12 +303,18 @@ abstract class Backend
      */
     public static function add_comment($task, $comment_text, $time = null)
     {
-        global $db, $user, $notify, $proj;
+        global $conf, $db, $user, $notify, $proj;
 
         if (!($user->perms('add_comments', $task['project_id']) && (!$task['is_closed'] || $user->perms('comment_closed', $task['project_id'])))) {
             return false;
         }
 
+	if($conf['general']['syntax_plugin'] != 'dokuwiki'){
+		$purifierconfig = HTMLPurifier_Config::createDefault();
+		$purifier = new HTMLPurifier($purifierconfig);
+		$comment_text = $purifier->purify($comment_text);
+	}
+	    
         if (!is_string($comment_text) || !strlen($comment_text)) {
             return false;
         }
@@ -431,11 +437,17 @@ abstract class Backend
 
 	    $res = false;
 	    foreach($_POST[$source] as $text) {
-		    if(empty($text)) {
-			    continue;
-		    }
+			$text = filter_var($text, FILTER_SANITIZE_URL);
+		
+			if( preg_match( '/^\s*(javascript:|data:)/', $text)){
+				continue;
+			}
+		    
+			if(empty($text)) {
+				continue;
+			}
 
-		    $res = true;
+			$res = true;
 
 		    // Insert into database
 		    $db->Query("INSERT INTO {links} (task_id, comment_id, url, added_by, date_added) VALUES (?, ?, ?, ?, ?)",
@@ -698,9 +710,11 @@ abstract class Backend
             }
 
             // Notify the appropriate users
-            $notify->Create(NOTIFY_NEW_USER, null,
+			if ($fs->prefs['notify_registration']) {
+                $notify->Create(NOTIFY_NEW_USER, null,
                             array($baseurl, $user_name, $real_name, $email, $jabber_id, $password, $auto),
                             $recipients, NOTIFY_EMAIL);
+			}
             // And also the new user
             $notify->Create(NOTIFY_OWN_REGISTRATION, null,
                             array($baseurl, $user_name, $real_name, $email, $jabber_id, $password, $auto),
@@ -741,7 +755,10 @@ abstract class Backend
 		}
 
 		$tables = array('users', 'users_in_groups', 'searches', 'notifications', 'assigned', 'votes', 'effort');
-
+		# FIXME Deleting a users effort without asking when user is deleted may not be wanted in every situation.
+		# For example for billing a project and the deleted user worked for a project.
+		# The better solution is to just deactivate the user, but maybe there are cases a user MUSt be deleted from the database.
+		# Move that effort to an 'anonymous users' effort if the effort(s) was legal and should be measured for project(s)?
 		foreach ($tables as $table) {
 			if (!$db->Query('DELETE FROM ' .'{' . $table .'}' . ' WHERE user_id = ?', array($uid))) {
 				return false;
@@ -755,8 +772,8 @@ abstract class Backend
 		$db->Query('DELETE FROM {registrations} WHERE email_address = ?',
                         array($userDetails['email_address']));
                 
-		$db->Query('DELETE FROM {user_emails} WHERE email_address = ?',
-                        array($userDetails['email_address']));
+		$db->Query('DELETE FROM {user_emails} WHERE id = ?',
+                        array($uid));
 		
                 $db->Query('DELETE FROM {reminders} WHERE to_user_id = ? OR from_user_id = ?',
                         array($uid, $uid));
@@ -956,7 +973,7 @@ abstract class Backend
      */
     public static function create_task($args)
     {
-        global $db, $user, $proj;
+        global $conf, $db, $user, $proj;
 
         if (!isset($args)) return 0;
 
@@ -1061,6 +1078,13 @@ abstract class Backend
         if (isset($sql_args['mark_private'])) {
             $sql_args['mark_private'] = intval($sql_args['mark_private'] == '1');
         }
+
+	# dokuwiki syntax plugin filters on output
+	if($conf['general']['syntax_plugin'] != 'dokuwiki'){
+		$purifierconfig = HTMLPurifier_Config::createDefault();
+		$purifier = new HTMLPurifier($purifierconfig);
+		$sql_args['detailed_desc'] = $purifier->purify($sql_args['detailed_desc']);
+	}
 
         // split keys and values into two separate arrays
         $sql_keys   = array();
@@ -1359,10 +1383,10 @@ LEFT JOIN {list_category} lc ON t.product_category = lc.category_id ';
             $select .= ' (SELECT COUNT(vot.vote_id) FROM {votes} vot WHERE vot.task_id = t.task_id) AS num_votes, ';
         }
 
-        $maxdatesql = ' GREATEST((SELECT max(c.date_added) FROM {comments} c WHERE c.task_id = t.task_id), t.date_opened, t.date_closed, t.last_edited_time) ';
+        $maxdatesql = ' GREATEST(COALESCE((SELECT max(c.date_added) FROM {comments} c WHERE c.task_id = t.task_id), 0), t.date_opened, t.date_closed, t.last_edited_time) ';
         $search_for_changes = in_array('lastedit', $visible) || array_get($args, 'changedto') || array_get($args, 'changedfrom');
         if ($search_for_changes) {
-            $select .= ' GREATEST((SELECT max(c.date_added) FROM {comments} c WHERE c.task_id = t.task_id), t.date_opened, t.date_closed, t.last_edited_time) AS max_date, ';
+            $select .= ' GREATEST(COALESCE((SELECT max(c.date_added) FROM {comments} c WHERE c.task_id = t.task_id), 0), t.date_opened, t.date_closed, t.last_edited_time) AS max_date, ';
             $cgroupbyarr[] = 't.task_id';
         }
 
@@ -1433,17 +1457,17 @@ LEFT JOIN {list_os} los ON t.operating_system = los.os_id ';
 
 	if (array_get($args, 'dev') || in_array('assignedto', $visible)) {
 		# not every db system has this feature out of box
-		if('mysql' == $db->dblink->dataProvider){
-			#$select .= ' GROUP_CONCAT(u.real_name) AS assigned_to_name, ';
-			# without distinct i see multiple times each assignee
-			# maybe performance penalty due distinct?, solve by better groupby construction?
-			$select .= ' GROUP_CONCAT(DISTINCT u.real_name) AS assigned_to_name, ';
-			# maybe later for building links to users
-			#$select .= ' GROUP_CONCAT(DISTINCT u.real_name ORDER BY u.user_id) AS assigned_to_name, ';
-			#$select .= ' GROUP_CONCAT(DISTINCT u.user_id ORDER BY u.user_id) AS assignedids, ';
-		}else{
-			$select .= ' MIN(u.real_name) AS assigned_to_name, ';
-			$select .= ' (SELECT COUNT(assc.user_id) FROM {assigned} assc WHERE assc.task_id = t.task_id)  AS num_assigned, ';
+		if($conf['database']['dbtype']=='mysqli' || $conf['database']['dbtype']=='mysql'){
+			$select .= ' GROUP_CONCAT(DISTINCT u.user_name ORDER BY u.user_id) AS assigned_to_name, ';
+			$select .= ' GROUP_CONCAT(DISTINCT u.user_id ORDER BY u.user_id) AS assignedids, ';
+			$select .= ' GROUP_CONCAT(DISTINCT u.profile_image ORDER BY u.user_id) AS assigned_image, ';
+		} elseif( $conf['database']['dbtype']=='pgsql'){
+			$select .= " array_to_string(array_agg(u.user_name ORDER BY u.user_id), ',') AS assigned_to_name, ";
+			$select .= " array_to_string(array_agg(CAST(u.user_id as text) ORDER BY u.user_id), ',') AS assignedids, ";
+                        $select .= " array_to_string(array_agg(u.profile_image ORDER BY u.user_id), ',') AS assigned_image, ";
+		} else{
+			$select .= ' MIN(u.user_name) AS assigned_to_name, ';
+			$select .= ' (SELECT COUNT(assc.user_id) FROM {assigned} assc WHERE assc.task_id = t.task_id) AS num_assigned, ';
 		}
 		// assigned table is now always included in join
 		$from .= '
@@ -1457,14 +1481,21 @@ LEFT JOIN {users} u ON ass.user_id = u.user_id ';
 		}
 	}
         
-	# not every db system has this feature out of box
-	if('mysql' == $db->dblink->dataProvider){
-		# without distinct i see multiple times each tag (when task has several assignees too)
+	# not every db system has this feature out of box, it is not standard sql
+	if($conf['database']['dbtype']=='mysqli' || $conf['database']['dbtype']=='mysql'){
 		$select .= ' GROUP_CONCAT(DISTINCT tg.tag_name ORDER BY tg.list_position) AS tags, ';
 		$select .= ' GROUP_CONCAT(DISTINCT tg.tag_id ORDER BY tg.list_position) AS tagids, ';
-	}else{
+		$select .= ' GROUP_CONCAT(DISTINCT tg.class ORDER BY tg.list_position) AS tagclass, ';
+	} elseif($conf['database']['dbtype']=='pgsql'){
+		$select .= " array_to_string(array_agg(tg.tag_name ORDER BY tg.list_position), ',') AS tags, ";
+		$select .= " array_to_string(array_agg(CAST(tg.tag_id as text) ORDER BY tg.list_position), ',') AS tagids, ";
+		$select .= " array_to_string(array_agg(tg.class ORDER BY tg.list_position), ',') AS tagclass, ";
+	} else{
+		# unsupported groupconcat or we just do not know how write it for the other databasetypes in this section 
 		$select .= ' MIN(tg.tag_name) AS tags, ';
-		$select .= ' (SELECT COUNT(tt.tag_id) FROM {task_tag} tt WHERE tt.task_id = t.task_id)  AS tagnum, ';
+		#$select .= ' (SELECT COUNT(tt.tag_id) FROM {task_tag} tt WHERE tt.task_id = t.task_id)  AS tagnum, ';
+		$select .= ' MIN(tg.tag_id) AS tagids, ';
+		$select .= " '' AS tagclass, ";
 	}
 	// task_tag join table is now always included in join
 	$from .= '
@@ -1478,9 +1509,9 @@ LEFT JOIN {list_tag} tg ON tt.tag_id = tg.tag_id ';
 
 	# use preparsed task description cache for dokuwiki when possible
 	if($conf['general']['syntax_plugin']=='dokuwiki' && FLYSPRAY_USE_CACHE==true){
-		$select.=' cache.content desccache, ';
+		$select.=' MIN(cache.content) desccache, ';
 		$from.='
-LEFT JOIN {cache} cache ON t.task_id=cache.topic AND cache.type="task" ';
+LEFT JOIN {cache} cache ON t.task_id=cache.topic AND cache.type=\'task\' ';
 	} else {
             $select .= 'NULL AS desccache, ';
         }
@@ -1673,13 +1704,7 @@ LEFT JOIN {cache} cache ON t.task_id=cache.topic AND cache.type="task" ';
 
         // Implementing setting "Default order by"
         if (!array_key_exists('order', $args)) {
-            if ($proj->id) {
-                /*
-                $orderBy = $proj->prefs['default_order_by'];
-                $sort = $proj->prefs['default_order_by_dir'];
-                */
-
-                # future
+        	# now also for $proj->id=0 (allprojects)
                 $orderBy = $proj->prefs['sorting'][0]['field'];
                 $sort =    $proj->prefs['sorting'][0]['dir'];
                 if (count($proj->prefs['sorting']) >1){
@@ -1689,14 +1714,6 @@ LEFT JOIN {cache} cache ON t.task_id=cache.topic AND cache.type="task" ';
                         $orderBy2='severity';
                         $sort2='DESC';
                 }
-
-            } else {
-                $orderBy = $fs->prefs['default_order_by'];
-                $sort = $fs->prefs['default_order_by_dir'];
-                # temp
-                $orderBy2='severity';
-                $sort2='DESC';
-            }
         } else {
             $orderBy = $args['order'];
             $sort = $args['sort'];

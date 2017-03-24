@@ -36,11 +36,11 @@
       </li>
       <li>
         <label for="othersview"><?php echo Filters::noXSS(L('othersview')); ?></label>
-        <?php echo tpl_checkbox('others_view', Req::val('others_view', Req::val('action') != 'admin.newproject'), 'othersview'); ?>
+        <?php echo tpl_checkbox('others_view', Req::val('others_view', 0), 'othersview'); ?>
       </li>
       <li>
         <label for="othersviewroadmap"><?php echo Filters::noXSS(L('othersviewroadmap')); ?></label>
-        <?php echo tpl_checkbox('others_viewroadmap', Req::val('others_viewroadmap', Req::val('action') != 'admin.newproject'), 'othersviewroadmap'); ?>
+        <?php echo tpl_checkbox('others_viewroadmap', Req::val('others_viewroadmap', 0), 'othersviewroadmap'); ?>
       </li>      
       <li>
         <label for="anonopen"><?php echo Filters::noXSS(L('allowanonopentask')); ?></label>
@@ -48,7 +48,7 @@
       </li>
       <li>
          <label for="disp_intro"><?php echo Filters::noXSS(L('dispintro')); ?></label>
-	 <?php echo tpl_checkbox('disp_intro', Req::val('disp_intro', 0), 'dispintro'); ?>
+	 <?php echo tpl_checkbox('disp_intro', Req::val('disp_intro', 0), 'disp_intro'); ?>
      </li>
       <li>
         <td class="buttons" colspan="2"><button type="submit" class="positive"><?php echo Filters::noXSS(L('createthisproject')); ?></button></td>

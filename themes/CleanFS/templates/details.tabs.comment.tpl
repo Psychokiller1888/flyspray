@@ -1,6 +1,7 @@
-<div id="comments" class="tab">
+<?php /* preset 'active' class, so browsers with disabled javascript see the comments tab content. */ ?>
+<div id="comments" class="tab active">
 	<?php foreach($comments as $comment): ?>
-		<div class="comment_container">
+		<div class="comment_container" id="<?php echo 'comment' . $comment['comment_id']; ?>">
 			<div class="comment_avatar"><?php echo tpl_userlinkavatar($comment['user_id'], $fs->prefs['max_avatar_size'], 'av_comment'); ?></div>
 			<div class="comment">
 				<div class="comment_header">

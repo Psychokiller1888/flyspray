@@ -1,19 +1,12 @@
 <script type="text/javascript">
-
-    function ShowHidePassword(id)
-    {
-        if(document.getElementById(id).type=="text")
-        {
+function ShowHidePassword(id) {
+        if(document.getElementById(id).type=="text") {
             document.getElementById(id).type="password";
-        }
-        else
-        {
+        } else {
             document.getElementById(id).type="text";
         }
-    }
-
+}
 </script>
-
 <script>
     /*
     * Second argument is always the parent calling to deactivate not needed childs
@@ -52,15 +45,14 @@
         }
     }
 </script>
-
 <div id="toolbox">
   <h3><?php echo Filters::noXSS(L('admintoolboxlong')); ?> :: <?php echo Filters::noXSS(L('preferences')); ?></h3>
   <?php echo tpl_form(CreateURL('admin', 'prefs')); ?>
   <ul id="submenu">
    <li><a href="#general"><?php echo Filters::noXSS(L('general')); ?></a></li>
+   <li><a href="#lookandfeel"><?php echo Filters::noXSS(L('lookandfeel')); ?></a></li>
    <li><a href="#userregistration"><?php echo Filters::noXSS(L('userregistration')); ?></a></li>
    <li><a href="#notifications"><?php echo Filters::noXSS(L('notifications')); ?></a></li>
-   <li><a href="#lookandfeel"><?php echo Filters::noXSS(L('lookandfeel')); ?></a></li>
   </ul>
 
    <div id="general" class="tab">
@@ -221,13 +213,18 @@
           <label for="needapproval"><?php echo Filters::noXSS(L('regapprovedbyadmin')); ?></label>
           <?php echo tpl_checkbox('need_approval', $fs->prefs['need_approval'], 'needapproval', 1, ($fs->prefs['only_oauth_reg']) ? array('disabled' => 'disabled', 'onclick' => 'check_change(true, "needapproval", "spamproof")') : array('onclick' => 'check_change("needapproval", "spamproof")')); ?>
         </li>
-
+	
         <li>
           <label for="spamproof"><?php echo Filters::noXSS(L('spamproof')); ?></label>
           <?php echo tpl_checkbox('spam_proof', $fs->prefs['spam_proof'], 'spamproof', 1, ($fs->prefs['need_approval'] || $fs->prefs['only_oauth_reg'] ) ? array('disabled' => 'true') : ''); ?>
         </li>
-
-        <li>
+	
+	<li>
+		<label for="captcha_securimage"><?php echo Filters::noXSS(L('regcaptcha')); ?></label>
+		<?php echo tpl_checkbox('captcha_securimage', $fs->prefs['captcha_securimage'], 'captcha_securimage'); ?>
+	</li>
+        
+	<li>
           <label for="notify_registration"><?php echo Filters::noXSS(L('notify_registration')); ?></label>
           <?php echo tpl_checkbox('notify_registration', $fs->prefs['notify_registration'], 'notify_registration'); ?>
         </li>
@@ -291,6 +288,33 @@
               <input id="showsmtppass" name="show_smtp_pass" class="text" type="checkbox"  onclick="ShowHidePassword('smtppass')"/>
           </li>
         </ul>
+  <?php echo Filters::noXSS(L('testmailsettings')); ?>: <button onclick="testEmail();return false;"><?php echo Filters::noXSS(L('test')); ?></button><div id="emailresult" style="display:inline-block;"></div> <?php echo Filters::noXSS(L('testmailsettingsnotice')); ?>.
+<script>
+function testEmail(){
+	var xmlHttp = new XMLHttpRequest();
+
+	xmlHttp.onreadystatechange = function(){
+		if(xmlHttp.readyState == 4){
+			var target = document.getElementById('emailresult');
+			if(xmlHttp.status == 200){
+				if(xmlHttp.responseText=='ok'){
+					target.style["background-color"]='#66ff00';
+					target.innerHTML = '<i class="fa fa-check fa-2x"></i> '+xmlHttp.responseText;
+				} else{
+					target.innerHTML = '<i class="fa fa-warning fa-2x" style="color:#ff0"></i>' + xmlHttp.responseText;
+					target.style["background-color"]='#ff6600';
+				}
+			} else{
+				target.innerHTML = '<i class="fa fa-warning fa-2x" style="color:#ff0"></i>' + xmlHttp.responseText;
+				target.style["background-color"]='#ff6600';
+			}
+		}
+	}
+	xmlHttp.open("POST", "<?php echo Filters::noXSS($baseurl); ?>js/callbacks/testemail.php", true);
+	xmlHttp.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+	xmlHttp.send("name=email&csrftoken=<?php echo $_SESSION['csrftoken'] ?>");
+}
+</script>    
       </fieldset>
 
       <fieldset><legend><?php echo Filters::noXSS(L('jabbernotify')); ?></legend>
@@ -322,7 +346,7 @@
           </li>
 
           <li>
-              <label for="showjabberppass"><?php echo Filters::noXSS(L('showpass')); ?></label>
+              <label for="showjabberpass"><?php echo Filters::noXSS(L('showpass')); ?></label>
               <input id="showjabberpass" name="show_jabber_pass" class="text" type="checkbox"  onclick="ShowHidePassword('jabberpassword')"/>
           </li>
 
@@ -332,12 +356,23 @@
 
     <div id="lookandfeel" class="tab">
       <ul class="form_elements">
-        <li>
-          <label for="globaltheme"><?php echo Filters::noXSS(L('globaltheme')); ?></label>
-          <select id="globaltheme" name="global_theme">
-            <?php echo tpl_options(Flyspray::listThemes(), $fs->prefs['global_theme'], true); ?>
-          </select>
-        </li>
+			<li>
+			<label for="globaltheme"><?php echo Filters::noXSS(L('globaltheme')); ?></label>
+			<select id="globaltheme" name="global_theme">
+			<?php echo tpl_options(Flyspray::listThemes(), $fs->prefs['global_theme'], true); ?>
+			</select>
+			<label for="customstyle" style="width:auto"><?php echo Filters::noXSS(L('customstyle')); ?></label>
+			<select id="customstyle" name="custom_style">
+			<?php
+			$customs[]=array('', L('no'));
+			$customstyles=glob_compat(BASEDIR ."/themes/".($proj->prefs['theme_style'])."/custom_*.css");
+			foreach ($customstyles as $cs){
+				$customs[]=array($cs,$cs);
+			}
+			echo tpl_options($customs, $proj->prefs['custom_style']);
+			?>
+			</select>
+      </li>
 
         <?php // Set the selectable column names
             // Do NOT use real database column name here and in the next list,
@@ -360,6 +395,7 @@
                 'private' => L('private'),
                 'assignedto' => L('assignedto'),
                 'lastedit' => L('lastedit'),
+                'editedby' => L('editedby'),
                 'reportedin' => L('reportedin'),
                 'dueversion' => L('dueversion'),
                 'duedate' => L('duedate'),
@@ -367,6 +403,7 @@
                 'attachments' => L('attachments'),
                 'progress' => L('progress'),
                 'dateclosed' => L('dateclosed'),
+                'closedby' => L('closedby'),
                 'os' => L('os'),
                 'votes' => L('votes'),
                 'estimatedeffort' => L('estimatedeffort'),
@@ -375,26 +412,31 @@
         ?>
 
         <li>
-          <label><?php echo Filters::noXSS(L('defaultorderby')); ?></label>
+          <label for="default_order_by"><?php echo Filters::noXSS(L('defaultorderby')); ?></label>
           <select id="default_order_by" name="default_order_by">
-            <?php echo tpl_options($columnnames, $fs->prefs['default_order_by'], false); ?>
+            <?php echo tpl_options($columnnames, $proj->prefs['sorting'][0]['field'], false); ?>
+          </select>
+          <select id="default_order_by_dir" name="default_order_by_dir">
+            <?php echo tpl_options(array('asc' => L('ascending'), 'desc' => L('descending')), $proj->prefs['sorting'][0]['dir'], false); ?>
           </select>
         </li>
-
-        <li>
-          <label><?php echo Filters::noXSS(L('defaultorderbydirection')); ?></label>
-          <select id="default_order_by_dir" name="default_order_by_dir">
-            <?php echo tpl_options(array('asc' => L('ascending'), 'desc' => L('descending')), $fs->prefs['default_order_by_dir'], false); ?>
+				<li>
+          <label for="default_order_by2"><?php echo Filters::noXSS(L('defaultorderby2')); ?></label>
+          <select id="default_order_by2" name="default_order_by2">
+            <?php echo tpl_options($columnnames, $proj->prefs['sorting'][1]['field'], false); ?>
+          </select>
+          <select id="default_order_by_dir2" name="default_order_by_dir2">
+            <?php echo tpl_options(array('asc' => L('ascending'), 'desc' => L('descending')), $proj->prefs['sorting'][1]['dir'], false); ?>
           </select>
         </li>
 
           <li>
-            <label><?php echo Filters::noXSS(L('visiblecolumns')); ?></label>
+            <label class="labeltextarea"><?php echo Filters::noXSS(L('visiblecolumns')); ?></label>
             <?php echo tpl_double_select('visible_columns', $columnnames, $selectedcolumns, false); ?>
           </li>
 
           <li>
-            <label><?php echo Filters::noXSS(L('visiblefields')); ?></label>
+            <label class="labeltextarea"><?php echo Filters::noXSS(L('visiblefields')); ?></label>
             <?php // Set the selectable field names
             $fieldnames = array(
                 'parent' => L('parent'),
@@ -416,7 +458,21 @@
             ?>
           </li>
 
-        </ul>
+	<?php if(isset($fs->prefs['general_integration'])): ?>
+	<li>
+	<label class="labeltextarea"><?php echo Filters::noXSS(L('generalintegration')); ?></label>
+	<?php echo TextFormatter::textarea('general_integration', 8, 70, array('id'=>'general_integration'), Post::val('general_integration', $fs->prefs['general_integration'])); ?>
+	</li>
+	<?php endif; ?>
+
+	<?php if(isset($fs->prefs['footer_integration'])): ?>
+	<li>
+	<label class="labeltextarea"><?php echo Filters::noXSS(L('footerintegration')); ?></label>
+	<?php echo TextFormatter::textarea('footer_integration', 8, 70, array('id'=>'footer_integration'), Post::val('footer_integration', $fs->prefs['footer_integration'])); ?>
+	</li>
+	<?php endif; ?>
+
+	</ul>
     </div>
     <div class="tbuttons">
       <input type="hidden" name="action" value="globaloptions" />

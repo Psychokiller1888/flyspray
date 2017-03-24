@@ -21,8 +21,13 @@ class Flyspray
      * Current Flyspray version. Change this for each release.  Don't forget!
      * @access public
      * @var string
+     * For github development use e.g. '1.0-beta dev' ; Flyspray::base_version() currently splits on the ' ' ...
+     * For making github release use e.g. '1.0-beta' here.
+     * For online version check www.flyspray.org/version.txt use e.g. '1.0-beta'
+     * For making releases on github use github's recommended versioning e.g. 'v1.0-beta' --> release files are then named v1.0-beta.zip and v1.0-beta.tar.gz and unzips to a flyspray-1.0-beta/ directory.
+     * Well, looks like a mess but hopefully consolidate this in future. Maybe use version_compare() everywhere in future instead of an own invented Flyspray::base_version()
      */
-    public $version = '1.0 Beta dev';
+	public $version = '1.0-rc5 dev';
 
     /**
      * Flyspray preferences
@@ -82,12 +87,16 @@ class Flyspray
 
         $sizes = array();
         foreach (array(ini_get('memory_limit'), ini_get('post_max_size'), ini_get('upload_max_filesize')) as $val) {
+        	if($val === '-1'){
+				// unlimited value in php configuration
+				$val = PHP_INT_MAX;
+			}
             if (!$val || $val < 0) {
                 continue;
             }
 
-            $val = trim($val);
             $last = strtolower($val{strlen($val)-1});
+            $val = trim($val, 'gGmMkK');
             switch ($last) {
                 // The 'G' modifier is available since PHP 5.1.0
                 case 'g':
@@ -158,6 +167,9 @@ class Flyspray
 
         $url = FlySpray::absoluteURI($url);
 
+	if($_SERVER['REQUEST_METHOD']=='POST' && version_compare(PHP_VERSION, '5.4.0')>=0 ) {
+		http_response_code(303);
+	}
         header('Location: '. $url);
 
         if ($rfc2616 && isset($_SERVER['REQUEST_METHOD']) &&
@@ -378,29 +390,32 @@ class Flyspray
 
         return $get_details;
     } // }}}
-    // List projects {{{
-    /**
-     * Returns a list of all projects
-     * @param bool $active_only show only active projects
-     * @access public static
-     * @return array
-     * @version 1.0
-     */
-    public static function listProjects(/*$active_only = true*/) // FIXME: $active_only would not work since the templates are accessing the returned array implying to be sortyed by project id, which is aparently wrong and error prone ! Same applies to the case when a project was deleted, causing a shift in the project id sequence, hence -> severe bug!
-    {
-        global $db;
 
-        $query = 'SELECT  project_id, project_title FROM {projects}';
+	// List projects {{{
+	/**
+	* Returns a list of all projects
+	* @param bool $active_only show only active projects
+	* @access public static
+	* @return array
+	* @version 1.0
+	*/
+	// FIXME: $active_only would not work since the templates are accessing the returned array implying to be sortyed by project id, which is aparently wrong and error prone ! Same applies to the case when a project was deleted, causing a shift in the project id sequence, hence -> severe bug!
+	# comment by peterdd 20151012: reenabled param active_only with false as default. I do not see a problem within current Flyspray version. But consider using $fs->projects when possible, saves this extra sql request.
+	public static function listProjects($active_only = false)
+	{
+		global $db;
+		$query = 'SELECT project_id, project_title, project_is_active FROM {projects}';
 
-//         if ($active_only)  {
-//             $query .= ' WHERE  project_is_active = 1';
-//         }
+		if ($active_only) {
+			$query .= ' WHERE project_is_active = 1';
+		}
 
-        $query .= ' ORDER BY  project_id ASC';
+		$query .= ' ORDER BY project_is_active DESC, project_id DESC'; # active first, latest projects first for option groups and new projects are probably the most used.
 
-        $sql = $db->Query($query);
-        return $db->fetchAllArray($sql);
-    } // }}}
+		$sql = $db->Query($query);
+		return $db->fetchAllArray($sql);
+	} // }}}
+    
     // List themes {{{
     /**
      * Returns a list of all themes
@@ -422,6 +437,9 @@ class Flyspray
         }
 
         sort($themes);
+		# always put the full default Flyspray theme first, [0] works as fallback in class Tpl->setTheme()
+		array_unshift($themes, 'CleanFS');
+		$themes = array_unique($themes);
         return $themes;
     } // }}}
     // List a project's group {{{
@@ -454,9 +472,14 @@ class Flyspray
     public static function listUsers()
     {
         global $db;
-        $res = $db->Query('SELECT account_enabled, user_id, user_name, real_name, email_address
-			FROM {users}
-			ORDER BY account_enabled DESC, UPPER(user_name) ASC');
+        $res = $db->Query('SELECT account_enabled, user_id, user_name, real_name,
+		email_address, jabber_id, oauth_provider, oauth_uid,
+		notify_type, notify_own, notify_online,
+		tasks_perpage, lang_code, time_zone, dateformat, dateformat_extended,
+		register_date, login_attempts, lock_until,
+		profile_image, hide_my_email
+		FROM {users}
+		ORDER BY account_enabled DESC, UPPER(user_name) ASC');
         return $db->FetchAllArray($res);
     }
 
@@ -609,26 +632,31 @@ class Flyspray
         return $db->FetchRow($sql);
     } // }}}
     //  {{{
-    /**
-     * Crypt a password with the method set in the configfile
-     * @param string $password
-     * @access public static
-     * @return string
-     * @version 1.0
-     */
-    public static function cryptPassword($password)
-    {
-        global $conf;
-        $pwcrypt = $conf['general']['passwdcrypt'];
+  /**
+   * Crypt a password with the method set in the configfile
+   * @param string $password
+   * @access public static
+   * @return string
+   * @version 1.0
+   */
+  public static function cryptPassword($password)
+  {
+	global $conf;
+	$pwcrypt = strtolower($conf['general']['passwdcrypt']);
 
-        if (strtolower($pwcrypt) == 'sha1') {
-            return sha1($password);
-        } elseif (strtolower($pwcrypt) == 'md5') {
-            return md5($password);
-        } else {
-            return crypt($password);
-        }
-    } // }}}
+	# sha1, md5, sha512 are unsalted, hashing methods, not suited for storing passwords anymore.
+	# Use crypt(), that adds random salt, customizable rounds and customizable hashing algorithms.
+	if ($pwcrypt == 'sha1') {
+		return sha1($password);
+	} elseif ($pwcrypt == 'md5') {
+		return md5($password);
+	} elseif ($pwcrypt == 'sha512') {
+		return hash('sha512', $password);
+	} else {
+		return crypt($password);
+	}
+  } // }}}
+
     // {{{
     /**
      * Check if a user provided the right credentials
@@ -665,20 +693,25 @@ class Flyspray
             return 0;
         }
 
-        if( $method != 'ldap' ){
-        //encrypt the password with the method used in the db
-        switch (strlen($auth_details['user_pass'])) {
-            case 40:
-                $password = sha1($password);
-                break;
-            case 32:
-                $password = md5($password);
-                break;
-            default:
-                $password = crypt($password, $auth_details['user_pass']); //using the salt from db
-                break;
-        }
-        }
+	if( $method != 'ldap' ){
+		// encrypt the password with the method used in the db
+		switch (strlen($auth_details['user_pass'])) {
+		# detecting passwords stored with old unsalted hashing methods: sha1,md5,sha512
+		case 40:
+			$pwhash = sha1($password);
+			break;
+		case 32:
+			$pwhash = md5($password);
+			break;
+		case 128:
+			$pwhash = hash('sha512', $password);
+			break;
+		default:
+			$pwhash = crypt($password, $auth_details['user_pass']); // user_pass contains algorithm, rounds, salt
+			break;
+		}
+	}
+
         if ($auth_details['lock_until'] > 0 && $auth_details['lock_until'] < time()) {
             $db->Query('UPDATE {users} SET lock_until = 0, account_enabled = 1, login_attempts = 0
                            WHERE user_id = ?', array($auth_details['user_id']));
@@ -686,15 +719,19 @@ class Flyspray
             $_SESSION['was_locked'] = true;
         }
 
-        // skip password check if the user is using oauth
-        if($method == 'oauth'){
-            $pwOk = true;
-        } elseif( $method == 'ldap'){
-            $pwOk = Flyspray::checkForLDAPUser($username, $password);
-        }else{
-            // Compare the crypted password to the one in the database
-            $pwOk = ($password == $auth_details['user_pass']);
-        }
+	// skip password check if the user is using oauth
+	if($method == 'oauth'){
+		$pwOk = true;
+	} elseif( $method == 'ldap'){
+		$pwOk = Flyspray::checkForLDAPUser($username, $password);
+	} else{
+		// Compare the crypted password to the one in the database
+		if( function_exists('hash_equals') ){
+			$pwOk = hash_equals($pwhash, $auth_details['user_pass']);
+		} else{
+			$pwOk = ($pwhash == $auth_details['user_pass']);
+		}
+	}
 
         // Admin users cannot be disabled
         if ($auth_details['group_id'] == 1 /* admin */ && $pwOk) {
@@ -928,7 +965,7 @@ class Flyspray
 
         return $changes;
     } // }}}
-    
+
 	// {{{
         /**
         * Get all tags of a task
@@ -942,13 +979,13 @@ class Flyspray
                 # pre FS1.0beta
                 #$sql = $db->Query('SELECT * FROM {tags} WHERE task_id = ?', array($task_id));
                 # since FS1.0beta
-                $sql = $db->Query('SELECT tg.tag_name AS tag, tg.class FROM {task_tag} tt
+                $sql = $db->Query('SELECT tg.tag_id, tg.tag_name AS tag, tg.class FROM {task_tag} tt
                         JOIN {list_tag} tg ON tg.tag_id=tt.tag_id 
                         WHERE task_id = ?
                         ORDER BY list_position', array($task_id));
                 return $db->FetchAllArray($sql);
 	} /// }}}
-    
+
     // {{{
     /**
      * Get a list of assignees for a task
@@ -1017,6 +1054,8 @@ class Flyspray
     /**
      * Returns the key number of an array which contains an array like array($key => $value)
      * For use with SQL result arrays
+     * returns 0 for first index, so take care if you want check when useing to check if a value exists, use ===
+     *
      * @param string $key
      * @param string $value
      * @param array $array
@@ -1031,6 +1070,7 @@ class Flyspray
                 return $num;
             }
         }
+	return false;
     }
 
     /**
@@ -1247,7 +1287,7 @@ class Flyspray
 
         if ($conn = @fsockopen($connect, $port, $errno, $errstr, 10)) {
             $out =  "GET {$url['path']} HTTP/1.0\r\n";
-            $out .= "Host: {$url['host']}\r\n\r\n";
+            $out .= "Host: {$url['host']}\r\n";
             $out .= "Connection: Close\r\n\r\n";
 
             stream_set_timeout($conn, 5);

@@ -28,15 +28,6 @@ if (!$conf) {
     Flyspray::Redirect('setup/index.php');
 }
 
-//FIXME: This is currently a workaround for the fact that parts of the code/templates use i.e. "taskid" and "task_id" for the same thing. This should be fixed cleanly, means a bit of work though.
-if      (isset($_GET["task_id"])) $_GET["taskid"]  = $_GET["task_id"];
-else if (isset($_GET["taskid"]))  $_GET["task_id"] = $_GET["taskid"];
-if      (isset($_POST["task_id"])) $_POST["taskid"]  = $_POST["task_id"];
-else if (isset($_POST["taskid"]))  $_POST["task_id"] = $_POST["taskid"];
-if      (isset($_REQUEST["task_id"])) $_REQUEST["taskid"]  = $_REQUEST["task_id"];
-else if (isset($_REQUEST["taskid"]))  $_REQUEST["task_id"] = $_REQUEST["taskid"];
-
-
 $db = new Database();
 $db->dbOpenFast($conf['database']);
 $fs = new Flyspray();
@@ -85,25 +76,33 @@ text-decoration: none;
 ');
 }
 
-// Any "do" mode that accepts a task_id or id field should be added here.
-if (in_array(Req::val('do'), array('details', 'depends', 'editcomment'))) {
+# load the correct $proj early also for checks on quickedit.php taskediting calls
+if( (BASEDIR.DIRECTORY_SEPARATOR.'js'.DIRECTORY_SEPARATOR.'callbacks'.DIRECTORY_SEPARATOR.'quickedit.php' == $_SERVER['SCRIPT_FILENAME']) && Post::num('task_id')){
+        $result = $db->Query('SELECT project_id FROM {tasks} WHERE task_id = ?', array(Post::num('task_id')));
+        $project_id = $db->FetchOne($result);
+}
+# Any "do" mode that accepts a task_id field should be added here.
+elseif (in_array(Req::val('do'), array('details', 'depends', 'editcomment'))) {
     if (Req::num('task_id')) {
-        $result = $db->Query('SELECT  project_id
-                                FROM  {tasks} WHERE task_id = ?', array(Req::num('task_id')));
+        $result = $db->Query('SELECT project_id FROM {tasks} WHERE task_id = ?', array(Req::num('task_id')));
+        $project_id = $db->FetchOne($result);
+    }
+}
+
+if (Req::val('do') =='pm' && Req::val('area')=='editgroup') {
+    if (Req::num('id')) {
+        $result = $db->Query('SELECT project_id FROM {groups} WHERE group_id = ?', array(Req::num('id')));
         $project_id = $db->FetchOne($result);
     }
 }
 
 if (!isset($project_id)) {
-    // Determine which project we want to see
-    if (($project_id = Cookie::val('flyspray_project')) == '') {
         $project_id = $fs->prefs['default_project'];
-    }
-    $project_id = Req::val('project', Req::val('project_id', $project_id));
+        # Force default value if input format is not allowed
+        if(is_array(Req::val('project'))) {
+                Req::set('project', $fs->prefs['default_project']);
+        }
+        $project_id = Req::val('project', Req::val('project_id', $project_id));
 }
 
 $proj = new Project($project_id);
-# no more project cookie!
-#$proj->setCookie();
-
-

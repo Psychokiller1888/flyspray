@@ -50,6 +50,17 @@ php_flag always_populate_raw_post_data Off
 	Deny From All
 </LimitExcept>
 
+# hide possible development files
+<Files ~ "^composer\.(json|lock|phar)$">
+	deny from all
+</Files>
+
+# Some hostings have autocorrection of minor misspelled URLs enabled.
+# We do not want that for Flyspray as it could lead to subtile unwanted behavior.
+<IfModule mod_speling.c>
+	CheckSpelling Off
+</IfModule>
+
 # probably mod_negotiation plays foul with mod_rewrite on this two rules:
 #     RewriteRule ^index$ index.php?do=index [L,QSA]
 #     RewriteRule ^index/proj([0-9]+)$ index.php?do=index&project=$1 [L,QSA]
@@ -72,6 +83,11 @@ RewriteBase /
 # Depends on your server setup/webhosting if done in php.ini, .user.ini or somehow/somewhere else.
 # Ask your web hoster if you don't know.
 
+# restrict direct access to vendor/ directory, except secureimage_show.php
+RewriteCond %{REQUEST_URI} !vendor/dapphp/securimage/images/refresh.png
+RewriteCond %{REQUEST_URI} !vendor/dapphp/securimage/images/loading.png
+RewriteCond %{REQUEST_URI} !vendor/dapphp/securimage/securimage_show.php
+RewriteRule ^vendor/.*$ - [R=403,NC,L]
 
 # used for enabling url_rewriting check in admin prefs
 RewriteRule . - [E=HTTP_MOD_REWRITE:On]
@@ -108,11 +124,15 @@ RewriteRule ^roadmap$ index.php?do=roadmap [L,QSA]
 RewriteRule ^roadmap/proj([0-9]+)$ index.php?do=roadmap&project=$1 [L,QSA]
 RewriteRule ^toplevel$ index.php?do=toplevel [L,QSA]
 RewriteRule ^toplevel/proj([0-9]+)$ index.php?do=toplevel&project=$1 [L,QSA]
+RewriteRule ^tasklist$ index.php?do=tasklist [L,QSA]
+RewriteRule ^tasklist/proj([0-9]+)$ index.php?do=tasklist&project=$1 [L,QSA]
+
+# homepage (can be tasklist, toplevel, or roadmap; maybe gantt in future too)
 RewriteRule ^index$ index.php?do=index [L,QSA]
 RewriteRule ^index/proj([0-9]+)$ index.php?do=index&project=$1 [L,QSA]
-RewriteRule ^newmultitasks/proj([0-9+])$ index.php?do=newmultitasks&project=$1 [L,QSA]
+RewriteRule ^newmultitasks/proj([0-9]+)$ index.php?do=newmultitasks&project=$1 [L,QSA]
 
-RewriteRule ^proj([0-9+])/dev([0-9]+)$ index.php?project=$1&do=index&dev=$2 [L,QSA]
+RewriteRule ^proj([0-9]+)/dev([0-9]+)$ index.php?project=$1&do=index&dev=$2 [L,QSA]
 RewriteRule ^proj([0-9]+)$ index.php?project=$1 [L,QSA]
 
 </IfModule>

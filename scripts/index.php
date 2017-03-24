@@ -1,9 +1,9 @@
 <?php
 
 /*
-   This script sets up and shows the front page with
-   the list of all available tasks that the user is
-   allowed to view.
+   This script sets up and shows the tasklist page.
+   It is for historical reason called index.php, because it was also the frontpage.
+   But now there can be a different pagetype set up as frontpage in Flyspray.
 */
 
 
@@ -14,11 +14,11 @@ if (!defined('IN_FS')) {
 // Need to get function ConvertSeconds
 require_once(BASEDIR . '/includes/class.effort.php');
 
-if (!$user->can_view_project($proj->id)) {
+if (!$user->can_select_project($proj->id)) {
     $proj = new Project(0);
 }
 
-$perpage = '250';
+$perpage = '50';
 if (isset($user->infos['tasks_perpage']) && $user->infos['tasks_perpage'] > 0) {
     $perpage = $user->infos['tasks_perpage'];
 }
@@ -43,11 +43,16 @@ if (in_array('effort', $visible) && !$user->perms('view_current_effort_done')) {
     unset($visible[array_search('effort', $visible)]);
 }
 
+# for csv export no paging limits
+if (Get::has('export_list')) {
+        $offset = -1;
+        $perpage = -1;
+}
+
 list($tasks, $id_list, $totalcount, $forbiddencount) = Backend::get_task_list($_GET, $visible, $offset, $perpage);
 
-//-- Added 2/1/2014 LAE. See if user wants to export the task list
 if (Get::has('export_list')) {
- export_task_list();
+	export_task_list();
 }
 
 $page->uses('tasks', 'offset', 'perpage', 'pagenum', 'visible');
@@ -84,7 +89,7 @@ function tpl_list_heading($colname, $format = "<th%s>%s</th>")
 {
     global $proj, $page;
     $imgbase = '<img src="%s" alt="%s" />';
-    $class   = '';
+    $class   = $colname;
     $html    = eL($colname);
 /*
     if ($colname == 'comments' || $colname == 'attachments') {
@@ -102,7 +107,7 @@ function tpl_list_heading($colname, $format = "<th%s>%s</th>")
 	}
 
     if (Get::val('order') == $colname) {
-        $class  = ' class="orderby"';
+        $class .= ' orderby';
         $sort1  = Get::safe('sort', 'desc') == 'desc' ? 'asc' : 'desc';
         $sort2  = Get::safe('sort2', 'desc');
         $order2 = Get::safe('order2');
@@ -120,11 +125,16 @@ function tpl_list_heading($colname, $format = "<th%s>%s</th>")
     }
 
 
-    $new_order = array('order' => $colname, 'sort' => $sort1, 'order2' => $order2, 'sort2' => $sort2);
-    $html = sprintf('<a title="%s" href="%s">%s</a>',
-            eL('sortthiscolumn'), Filters::noXSS(CreateURL('index', $proj->id, null, array_merge($_GET, $new_order))), $html);
+	$new_order = array('order' => $colname, 'sort' => $sort1, 'order2' => $order2, 'sort2' => $sort2);
+	# unneeded params from $_GET for the sort links
+	$params=array_merge($_GET, $new_order);
+	unset($params['do']);
+	unset($params['project']);
+	unset($params['switch']);
+	$html = sprintf('<a title="%s" href="%s">%s</a>',
+		eL('sortthiscolumn'), Filters::noXSS(CreateURL('tasklist', $proj->id, null, $params )), $html);
 
-    return sprintf($format, $class, $html);
+	return sprintf($format, ' class="'.$class.'"', $html);
 }
 
 // }}}
@@ -144,9 +154,11 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
             'summary'    => 'item_summary',
             'dateopened' => 'date_opened',
             'status'     => 'status_name',
-            'openedby'   => 'opened_by_name',
+            'openedby'   => 'opened_by',
+            'openedbyname'=> 'opened_by_name',
             'assignedto' => 'assigned_to_name',
             'lastedit'   => 'max_date',
+            'editedby'   => 'last_edited_by',
             'reportedin' => 'product_version_name',
             'dueversion' => 'closedby_version_name',
             'duedate'    => 'due_date',
@@ -154,6 +166,8 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
             'votes'      => 'num_votes',
             'attachments'=> 'num_attachments',
             'dateclosed' => 'date_closed',
+            'closedby'   => 'closed_by',
+            'commentedby'=> 'commented_by',
             'progress'   => '',
             'os'         => 'os_name',
             'private'    => 'mark_private',
@@ -178,13 +192,15 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
 			$value .= '...';
 		}
 		# <i> instead of <span> in future for smaller size
-		# we need also some bytes for classes like <i class="t123">tagname</i>
+		# we need also some bytes for classes like <i class="tag t123">tagname</i>
 		if($task['tags']!=''){
 			$tags=explode(',', $task['tags']);
 			$tagids=explode(',', $task['tagids']);
+			$tagclass=explode(',', $task['tagclass']);
 			$tgs='';
 			for($i=0;$i< count($tags); $i++){
-				$tgs.='<i class="t_'.$tagids[$i].'">'.$tags[$i].'</i>';
+				$tgs.='<i class="tag t'.$tagids[$i]
+					.(isset($tagclass[$i]) ? ' ' . $tagclass[$i] : '').'" title="'.$tags[$i].'"></i>';
 			}
                         $value.=$tgs;
 		}
@@ -205,6 +221,12 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
             $class.=' pri'.$task['task_priority'];
             break;
 
+	case 'attachments':
+	case 'comments':
+	case 'votes':
+		$value = $task[$indexes[$colname]]>0 ? $task[$indexes[$colname]]:'';
+		break;
+
         case 'lastedit':
         case 'duedate':
         case 'dateopened':
@@ -218,6 +240,7 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
             } else {
                 $value = htmlspecialchars($task[$indexes[$colname]], ENT_QUOTES, 'utf-8');
             }
+            $class.=' sta'.$task['item_status'];
             break;
 
         case 'progress':
@@ -226,10 +249,26 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
             break;
 
         case 'assignedto':
-		# group_concat-ed for mysql
-		$value = htmlspecialchars($task[$indexes[$colname]], ENT_QUOTES, 'utf-8');
-		# for DBs without group_concat()
-		if( ('mysql' != $db->dblink->dataProvider) && ($task['num_assigned'] > 1)) {
+		# group_concat-ed for mysql/pgsql
+		#$value = htmlspecialchars($task[$indexes[$colname]], ENT_QUOTES, 'utf-8');
+		$value='';
+		$anames=explode(',',$task[$indexes[$colname]]);
+		$aids=explode(',',$task['assignedids']);
+		$aimages=explode(',',$task['assigned_image']);
+		for($a=0;$a < count($anames);$a++){
+			if($aids[$a]){
+				# deactivated: avatars looks too ugly in the tasklist, user's name needs to be visible on a first look here, without needed mouse hovering..
+				#if ($fs->prefs['enable_avatars']==1 && $aimages[$a]){
+				#	$value.=tpl_userlinkavatar($aids[$a],30);
+				#} else{
+					$value.=tpl_userlink($aids[$a]);
+				#}
+				#$value.='<a href="'.$aids[$a].'">'.htmlspecialchars($anames[$a], ENT_QUOTES, 'utf-8').'</a>';
+			}
+		}
+
+		# fallback for DBs we haven't written sql string aggregation yet (currently with group_concat() mysql and array_agg() postgresql)
+		if( ('postgres' != $db->dblink->dataProvider) && ('mysql' != $db->dblink->dataProvider) && ($task['num_assigned'] > 1)) {
 			$value .= ', +' . ($task['num_assigned'] - 1);
 		}
 		break;
@@ -237,7 +276,24 @@ function tpl_draw_cell($task, $colname, $format = "<td class='%s'>%s</td>") {
         case 'private':
             $value = $task[$indexes[$colname]] ? L('yes') : L('no');
             break;
-
+            
+        case 'commentedby':
+        case 'openedby':
+        case 'editedby':
+        case 'closedby':
+                $value = '';
+                # a bit expensive! tpl_userlinkavatar()  an additional sql query for each new user in the output table
+                # at least tpl_userlink() uses a $cache array so query for repeated users 
+		if ($task[$indexes[$colname]] > 0) {
+			# deactivated: avatars looks too ugly in the tasklist, user's name needs to be visible on a first look here, without needed mouse hovering..
+			#if ($fs->prefs['enable_avatars']==1){
+			#	$value = tpl_userlinkavatar($task[$indexes[$colname]],30);
+			#} else{
+				$value = tpl_userlink($task[$indexes[$colname]]);
+			#}
+		}
+                break;
+                
         case 'parent':
             $value = '';
             if ($task['supertask_id'] > 0) {
@@ -320,16 +376,16 @@ function do_cmp($a, $b)
 */
 function export_task_list()
 {
-        global $tasks, $fs, $user, $sort, $orderby, $proj;
+	global $tasks, $fs, $user, $sort, $orderby, $proj;
 
-        if (!is_array($tasks)){
-                return;
-        }
+	if (!is_array($tasks)){
+		return;
+	}
 
-        # TODO enforcing user permissions on allowed fields
-        # TODO Flyspray 1.1 or later: selected fields by user request, saved user settings, tasklist settings or project defined list which fields should appear in an export
-        # TODO Flyspray 1.1 or later: export in .ods open document spreadsheet, .xml ....
-        $indexes = array (
+	# TODO enforcing user permissions on allowed fields
+	# TODO Flyspray 1.1 or later: selected fields by user request, saved user settings, tasklist settings or project defined list which fields should appear in an export
+	# TODO Flyspray 1.1 or later: export in .ods open document spreadsheet, .xml ....
+	$indexes = array (
             'id'         => 'task_id',
             'project'    => 'project_title',
             'tasktype'   => 'task_type',
@@ -371,7 +427,7 @@ function export_task_list()
 
         usort($tasks, "do_cmp");
 
-        $outfile = str_replace(' ', '_', $tasks[0]['project_title']).'_'.date("Y-m-d").'.csv';
+        $outfile = str_replace(' ', '_', $proj->prefs['project_title']).'_'.date("Y-m-d").'.csv';
 
         #header('Content-Type: application/csv');
         header('Content-Type: text/csv');
@@ -384,20 +440,25 @@ function export_task_list()
         ob_clean();
         flush();
 
-        $output = fopen('php://output', 'w');
-        #fputcsv($output, $projectinfo);
-        $headings= array(
-        	'ID',
-        	'Category',
-        	'Task Type',
-        	'Severity',
-        	'Summary',
-        	'Status',
-        	'Progress',
-        	$user->perms('view_estimated_effort') ?'Estimated Effort':'',
-        	// $user->perms('view_current_effort_done') ?'Done Effort':'',
-        	'Description',
-        );
+	$output = fopen('php://output', 'w');
+	#fputcsv($output, $projectinfo)
+	$headings= array(
+		'ID',
+		'Category',
+		'Task Type',
+		'Severity',
+		'Summary',
+		'Status',
+		'Progress',
+		'date_opened',
+		'date_closed',
+		'due_date',
+		'supertask_id',
+		$user->perms('view_estimated_effort') ?'Estimated Effort':'',
+		// $user->perms('view_current_effort_done') ?'Done Effort':'',
+		'Description',
+	);
+
         # TODO maybe if user just want localized headings for nonenglish speaking audience..
         #$headings= array('ID','Category','Task Type','Severity','Summary','Status','Progress');
         fputcsv($output, $headings);
@@ -410,6 +471,10 @@ function export_task_list()
                         $task['item_summary'],
                         $task['status_name'],
                         $task['percent_complete'],
+                        $task['date_opened'],
+                        $task['date_closed'],
+                        $task['due_date'],
+                        $task['supertask_id'],
                         ($user->perms('view_estimated_effort') && $proj->prefs['use_effort_tracking']) ? $task['estimated_effort'] : '',
                         // ($user->perms('view_current_effort_done') && $proj->prefs['use_effort_tracking']) ? $task['effort'] : '',
                         $task['detailed_desc']
@@ -429,18 +494,19 @@ if (Get::val('toggleadvanced')) {
 }
 // Update check {{{
 if(Get::has('hideupdatemsg')) {
-    unset($_SESSION['latest_version']);
-} else if ($conf['general']['update_check'] && $user->perms('is_admin')
-           && $fs->prefs['last_update_check'] < time()-60*60*24*3) {
-    if (!isset($_SESSION['latest_version'])) {
-        $latest = Flyspray::remote_request('http://flyspray.org/version.txt', GET_CONTENTS);
-		//if for some silly reason we get and empty response, we use the actual version
+	unset($_SESSION['latest_version']);
+} else if ($conf['general']['update_check'] 
+	&& $user->perms('is_admin')
+	&& $fs->prefs['last_update_check'] < time()-60*60*24*3) {
+	if (!isset($_SESSION['latest_version'])) {
+		$latest = Flyspray::remote_request('http://www.flyspray.org/version.txt', GET_CONTENTS);
+		# if for some silly reason we get an empty response, we use the actual version
  		$_SESSION['latest_version'] = empty($latest) ? $fs->version : $latest ;
-        $db->Query('UPDATE {prefs} SET pref_value = ? WHERE pref_name = ?', array(time(), 'last_update_check'));
+ 		$db->Query('UPDATE {prefs} SET pref_value = ? WHERE pref_name = ?', array(time(), 'last_update_check'));
 	}
 }
 if (isset($_SESSION['latest_version']) && version_compare($fs->version, $_SESSION['latest_version'] , '<') ) {
-    $page->assign('updatemsg', true);
+	$page->assign('updatemsg', true);
 }
 // }}}
 $page->setTitle($fs->prefs['page_title'] . $proj->prefs['project_title'] . ': ' . L('tasklist'));

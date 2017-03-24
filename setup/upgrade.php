@@ -73,7 +73,7 @@ $page = new Tpl;
 $page->assign('title', 'Upgrade ');
 $page->assign('short_version', UPGRADE_VERSION);
 
-if (!isset($conf['syntax_plugin']) || !$conf['syntax_plugin'] || $conf['syntax_plugin'] == 'none') {
+if (!isset($conf['general']['syntax_plugin']) || !$conf['general']['syntax_plugin'] || $conf['general']['syntax_plugin'] == 'none') {
     $page->assign('ask_for_conversion', true);
 } else {
     $page->assign('ask_for_conversion', false);
@@ -110,7 +110,7 @@ if (Post::val('upgrade')) {
     # first and explain that html-formatting is now used instead of plain text on installations that didn't
     # use dokuwiki format. Then, adding paragraph tags and line breaks might enhance readability.
     // For testing, do not use yet, have to discuss this one with others.
-    if ((!isset($conf['syntax_plugin']) || !$conf['syntax_plugin'] || $conf['syntax_plugin'] == 'none') && Post::val('yes_please_do_convert')) {
+    if ((!isset($conf['general']['syntax_plugin']) || !$conf['general']['syntax_plugin'] || $conf['general']['syntax_plugin'] == 'none') && Post::val('yes_please_do_convert')) {
         convert_old_entries('tasks', 'detailed_desc', 'task_id');
         convert_old_entries('projects', 'intro_message', 'project_id');
         convert_old_entries('projects', 'default_task', 'project_id');
@@ -611,7 +611,11 @@ function convert_old_entries($table, $column, $key) {
         $id = $entry[$key];
         $data = $entry[$column];
 
-        $data = htmlspecialchars($data, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+	if (version_compare(PHP_VERSION, '5.4.0') >= 0) {
+                $data = htmlspecialchars($data, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        } else{
+                $data = htmlspecialchars($data, ENT_QUOTES , 'UTF-8');
+        }
         // Convert two or more line breaks to paragrahs, Windows/Unix/Linux formats
         $data = preg_replace('/(\h*\r?\n)+\h*\r?\n/', "</p><p>", $data);
         // Data coming from Macs has only carriage returns, and couldn't say

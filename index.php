@@ -23,6 +23,8 @@ if ($do == 'admin' && Req::has('switch') && Req::val('project') != '0') {
 } elseif (Req::has('code')) {
 	$_SESSION['oauth_provider'] = 'microsoft';
 	$do = 'oauth';
+} elseif( Req::has('do') && Req::val('do') == 'tasklist') {
+	$do='index';
 }
 
 // supertask_id for add new sub-task
@@ -66,7 +68,14 @@ if (Get::val('getfile')) {
 
         header('Pragma: public');
         header("Content-type: $file_type");
-        header('Content-Disposition: filename="'.$orig_name.'"');
+
+		# image view/download difference
+		if(isset($_GET['dl'])){
+			header('Content-Disposition: attachment; filename="'.$orig_name.'"');
+		}else{
+			header('Content-Disposition: filename="'.$orig_name.'"');
+		}
+
         header('Content-transfer-encoding: binary');
         header('Content-length: ' . filesize($path));
 
@@ -102,9 +111,10 @@ if ($conf['general']['output_buffering'] == 'gzip' && extension_loaded('zlib'))
 $page = new FSTpl();
 
 // make sure people are not attempting to manually fiddle with projects they are not allowed to play with
-if (Req::has('project') && Req::val('project') != 0 && !$user->can_view_project(Req::val('project'))) {
-    Flyspray::show_error( L('nopermission') );
-    exit;
+if (Req::has('project') && Req::val('project') != 0 && !$user->can_select_project(Req::val('project'))) {
+	Flyspray::show_error( L('nopermission') );
+	Flyspray::Redirect($baseurl);
+	exit;
 }
 
 if ($show_task = Get::val('show_task')) {
@@ -153,13 +163,23 @@ if ($user->perms('is_admin')) {
     $page->assign('admin_pendingreq_num', $count);
 }
 
-$sql = $db->Query(
-        'SELECT  project_id, project_title, project_is_active, others_view,
-                 upper(project_title) AS sort_names
-           FROM  {projects}
-       ORDER BY  sort_names');
+# a bit hacky: First 3 MUST be project_id, project_title, project_is_active in this order!
+# This first 3 indexes are used by tpl_options currently..
+# removed upper(project_title) for sorting, should be handled by database collation (utf8_general_ci)
+$sql = $db->Query('
+	SELECT project_id, project_title, project_is_active, others_view, default_entry
+	FROM {projects}
+	ORDER BY project_is_active DESC, project_title'
+);
 
-$fs->projects = array_filter($db->FetchAllArray($sql), array($user, 'can_view_project'));
+# new: project_id as index for easier access, needs testing and maybe simplification 
+# similiar situation also includes/class.flyspray.php function listProjects()
+$sres=$db->FetchAllArray($sql);
+foreach($sres as $p){
+	$prs[$p['project_id']]=$p;
+}
+$fs->projects = array_filter($prs, array($user, 'can_select_project'));
+
 
 // Get e-mail addresses of the admins
 if ($user->isAnon() && !$fs->prefs['user_notify']) {
@@ -170,8 +190,12 @@ if ($user->isAnon() && !$fs->prefs['user_notify']) {
     $page->assign('admin_emails', array_map(create_function('$x', 'return str_replace("@", "#", $x);'), $db->fetchCol($sql)));
 }
 
-// default title
-$page->setTitle($fs->prefs['page_title'] . $proj->prefs['project_title']);
+// title tag
+if( $user->can_select_project($proj->id)){
+	$page->setTitle($fs->prefs['page_title'] . $proj->prefs['project_title']);
+} else{
+	$page->setTitle($fs->prefs['page_title']);
+}
 
 $page->assign('do', $do);
 $page->assign('supertask_id', $supertask_id);
@@ -184,6 +208,25 @@ if (!defined('NO_DO')) {
     # not nicest solution, NO_DO currently only used on register actions 
     $page->pushTpl('register.ok.tpl');
 }
+
+# 2016-07-29 peterdd: The following 2 optional install wide template assignments will make upgrading a Flyspray installation which needs to be integrated into an existing website a nobrainer in future.
+# Because the 2 variables are loaded from flyspray database, there is no need to change the default CleanFS template files and your own CSS style modifications is kept in your custom_*.css
+# You can keep stuff like a custom topbar that contains links to a sitewide wiki or CMS or whatever by storing it in flysprays database prefs table.
+# Project specific stuff like optional linking to a wiki for a project maybe be handled similiar by the project database table in future.
+
+# Open questions: Should we treat that as dokuwiki content (if dokuwiki is the 'syntax_plugin')?
+# Or even eval it as php-code, which can be dangerous, but gives the most freedom and creativity.
+# (For installs where all admin users are real admins of the hosting area, so they know what they are doing. Not intended for SaaS.)?
+if(isset($fs->prefs['general_integration'])){
+        # adds within the body before the footer div, but could appear as a whole or parts anywhere on the page by due custom CSS styling, for example as top linkbar.
+        $page->assign('general_integration', $fs->prefs['general_integration']);
+}
+if(isset($fs->prefs['footer_integration'])){
+        # goes within the footer div, but still could appear as a whole or parts anywhere on the page by due custom CSS styling, for example as top linkbar.
+        $page->assign('footer_integration', $fs->prefs['footer_integration']);
+}
+# 2016-07-29 end
+
 $page->pushTpl('footer.tpl');
 $page->setTheme($proj->prefs['theme_style']);
 $page->render();
@@ -194,5 +237,5 @@ if(isset($_SESSION)) {
         $currentrequest = md5(serialize($_POST));
         unset($_SESSION['requests_hash'][$currentrequest]);
     }
-    unset($_SESSION['ERROR'], $_SESSION['SUCCESS']);
+    unset($_SESSION['ERROR'], $_SESSION['ERRORS'], $_SESSION['SUCCESS']);
 }

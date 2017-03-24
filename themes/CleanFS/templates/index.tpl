@@ -66,7 +66,7 @@
 </div>
 <?php endif; ?>
 
-<?php if (!($user->isAnon() && count($fs->projects) == 0)): ?>
+<?php if (!($user->isAnon() &&  (count($fs->projects) == 0 || ($proj->id >0 && !$user->can_view_project($proj->id)))) ): ?>
 <?php $filter = false; if($proj->id > 0) { $filter = true; $fields = explode( ' ', $proj->prefs['visible_fields'] );} ?>
 <form id="search" action="<?php echo Filters::noXSS($baseurl); ?>index.php" method="get">
   <button id="searchthisproject" type="submit"><?php echo Filters::noXSS(L('searchthisproject')); ?></button>
@@ -220,10 +220,47 @@
 		    <div style="display:none">
 		    <?php } ?>
                         <label class="default multisel" for="percent"><?php echo Filters::noXSS(L('percentcomplete')); ?></label>
+                        <!-- legacy: tpl_options()
                         <select name="percent[]" id="percent" multiple="multiple" size="12">
                             <?php $percentages = array(); for ($i = 0; $i <= 100; $i += 10) $percentages[$i] = $i; ?>
                             <?php echo tpl_options(array('' => L('anyprogress')) + $percentages, Get::val('percent', '')); ?>
                         </select>
+                        -->
+<?php
+# new: use of tpl_select() which provides much more control
+# maybe move some of the php code from here to scripts/index.php ...
+$selected=Get::val('percent', '');
+$selected = is_array($selected) ? $selected : (array) $selected;
+$percentages = array();
+$percentages[]=array('value'=>'', 'label'=>L('anyprogress') );
+if(in_array('', $selected, true)){
+        $percentages[0]['attr']['selected']='selected';
+}
+for($i = 0; $i <= 100; $i += 10){
+	$opt = array();
+	$opt['value'] = $i;
+	$opt['label'] = $i;
+	# goes to theme.css ..
+	# styling of html select options probably works only in a few browsers (at least firefox), but where it works it can be an added value.
+	$opt['attr']=array('style'=>'background:linear-gradient(90deg,#0c0 0%,#0c0 '.$i.'%, #fff '.$i.'%, #fff 100%)');
+	$opt['attr']=array('class'=>'percent'.$i);
+	if(in_array("$i", $selected)){
+		$opt['attr']['selected']='selected';
+	}
+	$percentages[]=$opt;
+}
+echo tpl_select(
+	array(
+		'name'=>'percent[]',
+		'attr'=>array(
+			'id'=>'percent',
+			'multiple'=>'multiple',
+			'size'=>12
+		),
+		'options'=>$percentages
+	)
+);
+?>
                     </div>
                     <div class="clear"></div>
                 </fieldset>
@@ -296,6 +333,7 @@
 		d.style.top = (cY+10) + "px";
 	}
 	function Show(elem, id) {
+		if(cY == 0) return;
 		var div = document.getElementById("desc_"+id);
 		AssignPosition(div);
 		div.style.display = "block";
@@ -307,153 +345,64 @@
 <table id="tasklist_table">
 <colgroup>
 	<col class="caret" />
-	<?php if (!$user->isAnon() && $proj->id !=0): ?><col class="toggle" /><?php endif; ?>
+	<?php if (!$user->isAnon() && $proj->id !=0 && $total): ?><col class="toggle" /><?php endif; ?>
 	<?php foreach ($visible as $col): ?>
-        <col class="<?php echo $col; ?>" />
-        <?php endforeach; ?>
+	<col class="<?php echo $col; ?>" />
+	<?php endforeach; ?>
 </colgroup>
 <thead>
-    <tr>
-        <th class="caret">
-        </th>
-        <?php if (!$user->isAnon() && $proj->id !=0): ?>
-        <th class="ttcolumn">
-        <?php if (!$user->isAnon() && $total): ?>
-            <a title="<?php echo Filters::noXSS(L('toggleselected')); ?>" href="javascript:ToggleSelected('massops')" onclick="massSelectBulkEditCheck();">
-            </a>
-        <?php endif; ?>
-        </th>
-        <?php endif; ?>
-        <?php foreach ($visible as $col): ?>
-        <?php echo tpl_list_heading($col, "<th%s>%s</th>"); ?>
-        <?php endforeach; ?>
-    </tr>
+<tr>
+	<th class="caret"></th>
+	<?php if (!$user->isAnon() && $proj->id !=0 && $total): ?>
+	<th class="ttcolumn"><a title="<?php echo Filters::noXSS(L('toggleselected')); ?>" href="javascript:ToggleSelected('massops')" onclick="massSelectBulkEditCheck();"></a></th>
+	<?php
+	endif;
+	foreach ($visible as $col):
+	echo tpl_list_heading($col, "<th%s>%s</th>");
+	endforeach;
+	?>
+</tr>
 </thead>
 <tbody>
-     <?php
-	$i = -1;
-
-	foreach ($tasks as $task_details):
-		$i++;
-		if ( $i == 5 )
-		{
-    ?>
-    <tr id="support4">
-	<td></td>
-	<td></td>
-	<td></td>
-	<td colspan=<?php echo  count($visible);?>>
-	        <script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script> 
-		<ins class="adsbygoogle"
-		     style="display:block"
-		     data-ad-client="ca-pub-1201923297792693"
-		     data-ad-slot="7450624364"
-		     data-ad-format="auto"></ins>
-	        <script> 
-	                (adsbygoogle = window.adsbygoogle || []).push({}); 
-	        </script>
-	</td> 
-    </tr>
-
-     <?php
-		}
-		elseif ( $i == 11 )
-		{
-    ?>
-    <tr id="support5">
-	<td></td>
-	<td></td>
-	<td></td>
-	<td colspan=<?php echo  count($visible);?>>
-		<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
-			<ins class="adsbygoogle"
-			     style="display:inline-block;width:728px;height:15px"
-			     data-ad-client="ca-pub-1201923297792693"
-			     data-ad-slot="5823957169"></ins>
-		<script>
-			(adsbygoogle = window.adsbygoogle || []).push({});
-		</script>
-	</td> 
-    </tr>
-
-     <?php
-		}
-		elseif ( $i == 17 )
-		{
-    ?>
-    <tr id="support6">
-	<td></td>
-	<td></td>
-	<td></td>
-	<td colspan=<?php echo  count($visible);?>>
-		<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
-		<ins class="adsbygoogle"
-		     style="display:block"
-		     data-ad-client="ca-pub-1201923297792693"
-		     data-ad-slot="4347223963"
-		     data-ad-format="auto"></ins>
-		<script>
-			(adsbygoogle = window.adsbygoogle || []).push({});
-		</script>
-	</td> 
-    </tr>
-
-
-
-    <?php
-	}
-    ?>
-    <tr id="task<?php echo $task_details['task_id']; ?>" class="severity<?php echo Filters::noXSS($task_details['task_severity']); ?>" onmouseover="Show(this,<?php echo $task_details['task_id']; ?>)" onmouseout="Hide(this, <?php echo $task_details['task_id']; ?>)">
-        <td class="caret">
-        </td>
-        <?php if (!$user->isAnon() && $proj->id !=0): ?>
-        <td class="ttcolumn">
-            <input class="ticktask" type="checkbox" name="ids[]" onclick="BulkEditCheck()" value="<?php echo Filters::noXSS($task_details['task_id']); ?>"/>
-        </td>
-        <?php endif;?>
-
-        <?php foreach ($visible as $col):
+<?php foreach ($tasks as $task):?>
+<tr id="task<?php echo $task['task_id']; ?>" class="severity<?php echo $task['task_severity'];  echo $task['is_closed'] ==1 ? ' closed': '';?>">
+	<td class="caret"></td>
+	<?php if (!$user->isAnon() && $proj->id !=0): ?>
+	<td class="ttcolumn"><input class="ticktask" type="checkbox" name="ids[]" onclick="BulkEditCheck()" value="<?php echo $task['task_id']; ?>"/></td>
+	<?php
+	endif;
+	foreach ($visible as $col):
 		if($col == 'progress'):?>
-        	<td class="task_progress">
-            <div class="progress_bar_container">
-                <span><?php echo Filters::noXSS($task_details['percent_complete']); ?>%</span>
-
-                <div class="progress_bar" style="width:<?php echo Filters::noXSS($task_details['percent_complete']); ?>%"></div>
-            </div>
-        </td>
-        	<?php else: ?>
-        	<?php echo tpl_draw_cell($task_details, $col); ?>
-        	<?php endif;
-        endforeach; ?>
-<td id="desc_<?php echo $task_details['task_id']; ?>" class="descbox box">
-<b><?php echo L('taskdescription'); ?></b>
-<?php echo $task_details['detailed_desc'] ? TextFormatter::render($task_details['detailed_desc'], 'task', $task_details['task_id'], $task_details['desccache']) : '<p>'.L('notaskdescription').'</p>'; ?>
-</td>
-    </tr>
+	<td class="task_progress"><div class="progress_bar_container"><span><?php echo $task['percent_complete']; ?>%</span><div class="progress_bar" style="width:<?php echo $task['percent_complete']; ?>%"></div></div></td>
+		<?php elseif ($col == 'summary'):
+			echo tpl_draw_cell($task, $col, "<td class='%s' onmouseover=\"Show(this," . $task['task_id'] . ")\" onmouseout=\"Hide(this, " . $task['task_id'] . ")\">%s</td>");
+		else:
+		echo tpl_draw_cell($task, $col);
+		endif;
+	endforeach;
+	?>
+	<td id="desc_<?php echo $task['task_id']; ?>" class="descbox box">
+	<b><?php echo L('taskdescription'); ?></b>
+	<?php echo $task['detailed_desc'] ? TextFormatter::render($task['detailed_desc'], 'task', $task['task_id'], $task['desccache']) : '<p>'.L('notaskdescription').'</p>'; ?>
+	</td>
+</tr>
 <?php endforeach; ?>
 </tbody>
 </table>
 <table id="pagenumbers">
-    <tr>
-        <?php if ($total): ?>
-        <td id="taskrange">
-            <?php echo sprintf(L('taskrange'), $offset + 1,
-            ($offset + $perpage > $total ? $total : $offset + $perpage), $total); ?>
-
-            <?php if (!$proj->id == 0 && !$user->isAnon() && $total){ ?>
-            <?php } ?>
-        </td>
-        <td id="numbers"><?php echo pagenums($pagenum, $perpage, $total); ?></td>
-        <?php else: ?>
-        <td id="taskrange"><strong><?php echo Filters::noXSS(L('noresults')); ?></strong></td>
-        <?php endif; ?>
-    </tr>
+<tr>
+<?php if ($total): ?>
+	<td id="taskrange"><?php echo sprintf(L('taskrange'), $offset + 1, ($offset + $perpage > $total ? $total : $offset + $perpage), $total); ?></td>
+	<td id="numbers"><?php echo pagenums($pagenum, $perpage, $total); ?></td>
+<?php else: ?>
+	<td id="taskrange"><strong><?php echo Filters::noXSS(L('noresults')); ?></strong></td>
+<?php endif; ?>
+</tr>
 </table>
 
 <!-- Bulk editing Tasks -->
 <?php if (!$user->isAnon() && $proj->id !=0 && $total): ?>
 <!-- Grab fields wanted for this project so we only show those specified in the settings -->
-<script>Effect.Fade('bulk_edit_selectedItems');</script>
 <div id="bulk_edit_selectedItems" style="display:none">
     <fieldset>
         <legend><b><?php echo Filters::noXSS(L('updateselectedtasks')); ?></b></legend>

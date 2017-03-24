@@ -131,10 +131,10 @@
             <?php if ($user->can_add_task_dependency($task_details)): ?>
             <li><input type="checkbox" id="s_adddependent"/><label for="s_adddependent"><?php echo Filters::noXSS(L('adddependenttask')); ?></label>
               <?php echo tpl_form(Filters::noXSS(CreateURL('details', $task_details['task_id'])),null,null,null,'id="adddepform"'); ?>
-              <label for="dep_task_id"><?php echo Filters::noXSS(L('newdependency')); ?></label>
               <input type="hidden" name="action" value="details.newdep" />
               <input type="hidden" name="task_id" value="<?php echo Filters::noXSS($task_details['task_id']); ?>" />
-              <input class="text" type="text" value="<?php echo Filters::noXSS(Req::val('dep_task_id')); ?>" id="dep_task_id" name="dep_task_id" size="5" maxlength="10" />
+              <label for="dep_task_id"><?php echo Filters::noXSS(L('newdependency')); ?></label>
+              FS# <input class="text" type="text" value="<?php echo Filters::noXSS(Req::val('dep_task_id')); ?>" id="dep_task_id" name="dep_task_id" size="5" maxlength="10" />
               <button type="submit" name="submit"><?php echo Filters::noXSS(L('add')); ?></button>
               </form>
             </li>
@@ -229,8 +229,8 @@ function quick_edit(elem, id)
 
 	xmlHttp.onreadystatechange = function(){
 		if(xmlHttp.readyState == 4){
+			var target = elem.previousElementSibling;
 			if(xmlHttp.status == 200){
-				var target = elem.previousElementSibling;
 				if(target.getElementsByTagName("span").length > 0)//for progress
 				{
 					target.getElementsByTagName("span")[0].innerHTML = text;
@@ -238,11 +238,13 @@ function quick_edit(elem, id)
 				}else{
 					target.innerHTML = text;
 				}
-				// TODO show some kind of ok sign icon for a successful save
+				target.className='fa fa-check';
+				elem.className='fa fa-check';
 				show_hide(elem, false);
 			}else{
 				// TODO show error message returned from the server and let quickedit form open
-				elem.parentNode.style["background-color"]='#ff6600'; // at least show something went wrong
+				target.className='fa fa-warning';
+				elem.className='fa fa-warning';
 			}
 		}
 	}
@@ -679,23 +681,26 @@ function quick_edit(elem, id)
     </div>
 
 
-    <div id="taskdetailsfull">
-        <h2 class="summary severity<?php echo Filters::noXSS($task_details['task_severity']); ?>">
-            FS#<?php echo Filters::noXSS($task_details['task_id']); ?> - <?php echo Filters::noXSS($task_details['item_summary']); ?>
-        </h2>
-        <span class="tags"><?php foreach($tags as $tag): ?><span><?php echo Filters::noXSS($tag['tag']); ?></span><?php endforeach; ?></span>
-        <div id="taskdetailstext"><?php echo $task_text; ?></div>
+<div id="taskdetailsfull">
+	<h2 class="summary severity<?php echo Filters::noXSS($task_details['task_severity']); ?>">
+	FS#<?php echo Filters::noXSS($task_details['task_id']); ?> - <?php echo Filters::noXSS($task_details['item_summary']); ?>
+	</h2>
+	<span class="tags"><?php foreach($tags as $tag): ?><span class="tag t<?php echo $tag['tag_id'].($tag['class']? ' '.$tag['class'] : ''); ?>" title="<?php echo Filters::noXSS($tag['tag']); ?>"></span><?php endforeach; ?></span>
+	<div id="taskdetailstext"><?php echo $task_text; ?></div>
 
         <?php $attachments = $proj->listTaskAttachments($task_details['task_id']);
         $this->display('common.attachments.tpl', 'attachments', $attachments); ?>
 
         <?php $links = $proj->listTaskLinks($task_details['task_id']);
         $this->display('common.links.tpl', 'links', $links); ?>
-    </div>
+</div>
 
-    <div id="taskinfo">
+<div id="taskinfo">
         <?php if(!count($deps)==0): ?>
-        <?php $projects = $fs->listProjects(); ?>
+        <?php 
+        # 20151012 peterdd: seems to be unused code, deactivated the extra (sql) call
+        #$projects = $fs->listProjects();
+        ?>
         <table id="dependency_table" class="table" width="100%">
             <caption><?php echo (count($deps)==1) ? eL('taskdependsontask') : eL('taskdependsontasks'); ?></caption>
             <thead>
@@ -723,26 +728,17 @@ function quick_edit(elem, id)
                 <td class="task_progress">
                     <div class="progress_bar_container">
                         <span><?php echo Filters::noXSS($dependency['percent_complete']); ?>%</span>
-
                         <div class="progress_bar" style="width:<?php echo Filters::noXSS($dependency['percent_complete']); ?>%"></div>
                     </div>
                 </td>
                 <!-- <td>Assignees TODO</td> -->
                 <td>
-                    <?php
-                        echo tpl_form(Filters::noXSS(CreateURL('details', $task_details['task_id'])));
-                    ?>
+                    <?php echo tpl_form(Filters::noXSS(CreateURL('details', $task_details['task_id']))); ?>
                     <input type="hidden" name="depend_id" value="<?php echo Filters::noXSS($dependency['depend_id']); ?>" />
                     <input type="hidden" name="return_task_id" value="<?php echo Filters::noXSS($task_details['task_id']); ?>" />
                     <input type="hidden" name="action" value="removedep" />
-                    <input type="image"  src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
+                    <button type="submit" title="<?php echo Filters::noXSS(L('remove')); ?>" class="fa fa-unlink fa-lg"></button>
                     </form>
-                    <!--
-                    <a class="removedeplink"
-                       href="<?php echo Filters::noXSS($_SERVER['SCRIPT_NAME']); ?>?do=details&amp;action=removedep&amp;depend_id=<?php echo Filters::noXSS($dependency['depend_id']); ?>&amp;task_id=<?php echo Filters::noXSS($task_details['task_id']); ?>&amp;return_task_id=<?php echo Filters::noXSS($task_details['task_id']); ?>">
-                        <img src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
-                    </a>
-                    -->
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -752,7 +748,10 @@ function quick_edit(elem, id)
 
         <!-- This task blocks the following tasks: -->
         <?php if(!count($blocks)==0): ?>
-        <?php $projects = $fs->listProjects(); ?>
+        <?php
+        # 20151012 peterdd: seems to be unused code, deactivated the extra (sql) call
+        #$projects = $fs->listProjects();
+        ?>
         <table id="blocking_table" class="table" width="100%">
             <caption><?php echo (count($blocks)==1) ? eL('taskblock') : eL('taskblocks'); ?></caption>
             <thead>
@@ -780,26 +779,17 @@ function quick_edit(elem, id)
                 <td class="task_progress">
                     <div class="progress_bar_container">
                         <span><?php echo Filters::noXSS($dependency['percent_complete']); ?>%</span>
-
                         <div class="progress_bar" style="width:<?php echo Filters::noXSS($dependency['percent_complete']); ?>%"></div>
                     </div>
                 </td>
                 <!-- <td>Assignees TODO</td> -->
                 <td>
-                    <?php
-                        echo tpl_form(Filters::noXSS(CreateURL('details', $dependency['task_id'])));
-                    ?>
+                    <?php echo tpl_form(Filters::noXSS(CreateURL('details', $dependency['task_id']))); ?>
                     <input type="hidden" name="depend_id" value="<?php echo Filters::noXSS($dependency['depend_id']); ?>" />
                     <input type="hidden" name="return_task_id" value="<?php echo Filters::noXSS($task_details['task_id']); ?>" />
                     <input type="hidden" name="action" value="removedep" />
-                    <input type="image"  src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
+                    <button type="submit" title="<?php echo Filters::noXSS(L('remove')); ?>" class="fa fa-unlink fa-lg"></button>
                     </form>
-                    <!--
-                    <a class="removedeplink"
-                       href="<?php echo Filters::noXSS($_SERVER['SCRIPT_NAME']); ?>?do=details&amp;action=removedep&amp;depend_id=<?php echo Filters::noXSS($dependency['depend_id']); ?>&amp;task_id=<?php echo Filters::noXSS($dependency['task_id']); ?>&amp;return_task_id=<?php echo Filters::noXSS($task_details['task_id']); ?>">
-                        <img src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
-                    </a>
-                    -->
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -816,7 +806,10 @@ function quick_edit(elem, id)
             }
         ?>
         <?php if(!count($subtasks)==0): ?>
-        <?php $projects = $fs->listProjects(); ?>
+        <?php
+        # 20151012 peterdd: seems to be unused code, deactivated the extra (sql) call
+        #$projects = $fs->listProjects();
+        ?>
         <table id="subtask_table" class="table" width="100%">
             <caption><?php echo (count($subtasks)==1) ? eL('taskhassubtask') : eL('taskhassubtasks'); ?></caption>
             <thead>
@@ -856,14 +849,8 @@ function quick_edit(elem, id)
                     ?>
                     <input type="hidden" name="subtaskid" value="<?php echo Filters::noXSS($subtask['task_id']); ?>" />
                     <input type="hidden" name="action" value="removesubtask" />
-                    <input type="image"  src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
-                    </form>
-                    <!--
-                    <a class="removedeplink"
-                       href="<?php echo Filters::noXSS($_SERVER['SCRIPT_NAME']); ?>?do=details&amp;action=removesubtask&amp;subtaskid=<?php echo Filters::noXSS($subtask['task_id']); ?>&amp;task_id=<?php echo Filters::noXSS($task_details['task_id']); ?>">
-                        <img src="<?php echo Filters::noXSS($this->get_image('button_cancel')); ?>" alt="<?php echo Filters::noXSS(L('remove')); ?>" title="<?php echo Filters::noXSS(L('remove')); ?>"/>
-                    </a>
-                    -->
+                    <button type="submit" title="<?php echo Filters::noXSS(L('remove')); ?>" class="fa fa-unlink fa-lg"></button>
+		    </form>
                 </td>
             </tr>
             <?php endforeach; ?>

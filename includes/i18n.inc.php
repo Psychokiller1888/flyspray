@@ -98,14 +98,14 @@ function load_translations(){
 	# if no valid lang_code, return english
 	# valid == a-z and "_" case insensitive
 
-	if(array_key_exists('lang_code', $user->infos)){
+	if (isset($user) && array_key_exists('lang_code', $user->infos)){
 		$lang_code=$user->infos['lang_code'];
 	}
 
 	# 20150211 add language preferences detection of visitors
 	# locale_accept_from_http() not available on every hosting, so we must parse it self.
 	# TODO ..and we can loop later through $langs until we find a matching translation file
-	if( !isset($lang_code) || $lang_code=='' ){
+	if((!isset($lang_code) || $lang_code=='' || $lang_code=='browser') && isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])){
 		foreach( explode(',', $_SERVER['HTTP_ACCEPT_LANGUAGE']) as $lang) {
 			# taken from a php.net comment
 			$pattern = '/^(?P<primarytag>[a-zA-Z]{2,8})'.
@@ -125,7 +125,7 @@ function load_translations(){
 		}
 	}
 
-	if(!isset($lang_code) || $lang_code==''){
+	if(!isset($lang_code) || $lang_code=='' || $lang_code=='project'){
 		if($proj->prefs['lang_code']){
 			$lang_code = $proj->prefs['lang_code'];
 		}else{
@@ -137,6 +137,7 @@ function load_translations(){
 		$lang_code ='en';
 	}
 
+	$lang_code = strtolower($lang_code);
 	$translation = BASEDIR.'/lang/'.$lang_code.'.php';
 	if ($lang_code != 'en' && is_readable($translation)) {
 		include_once($translation);
@@ -151,7 +152,7 @@ function load_translations(){
 
         FlySprayI18N::setDefault($language);
     // correctly translate title since language not set when initialising the project
-    if (!$proj->id) {
+    if (isset($proj) && !$proj->id) {
         $proj->prefs['project_title'] = L('allprojects');
         $proj->prefs['feed_description']  = L('feedforall');
     }

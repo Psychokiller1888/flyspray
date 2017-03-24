@@ -1,9 +1,9 @@
-			<div id="right">
-			<form action="index.php" method="post" name="database_form">
-				<?php echo $message; ?>
-				<h1>Administration setup</h1>
-				<h2>Setup all the Application values</h2>
-				<div class="installBlock">
+<div>
+<form action="index.php" method="post" name="database_form">
+	<?php echo $message; ?>
+	<h1><?php echo Filters::noXSS(L('administrationsetup')); ?></h1>
+	<h2><?php echo Filters::noXSS(L('setupapplicationvalue')); ?></h2>
+	<div class="installBlock">
 <script type="text/javascript">
 function ShowHidePassword(id) {
 	if(document.getElementById(id).type=="text") {
@@ -13,62 +13,56 @@ function ShowHidePassword(id) {
 	}
 }
 </script>
-				<table class="formBlock" style="width:68%;">
-					<tr>
-						<td align="right"><?php echo L('adminemail'); ?></td>
-						<td align="center"><input class="inputbox" type="text" name="admin_email" value="<?php echo $admin_email; ?>" size="30" /></td>
-					</tr>
-					<tr>
-						<td align="right"><?php echo L('adminusername'); ?></td>
-						<td align="center"><input class="inputbox" type="text" name="admin_username" value="<?php echo $admin_username; ?>" size="30" /></td>
-					</tr>
-					<tr>
-						<td align="right"><?php echo L('adminpassword'); ?></td>
-						<td align="center"><input class="inputbox" type="password" name="admin_password" id="admin_password" value="<?php echo $admin_password; ?>" size="30" /></td>
-					</tr>
-					<tr>
-						<td align="right"><label for="showpassword"><?php echo L('showpassword'); ?></label></td>
-						<td align="center"><input type="checkbox" onclick="ShowHidePassword('admin_password')" id="showpassword"></td>
-					</tr>
-					<?php if ($daemonise): ?>
-					<tr>
-						<td align="right">Reminder daemon</td>
-						<td align="center"><?php echo $daemonise; ?></td>
-					</tr>
-					<?php endif; ?>
-				</table>
-				<p>
-				The Database schema has been populated. Please follow the instructions to complete the Admin configuration.
-				</p>
-				1) Admin <strong>Email, Username, Password</strong> are values for the Administrator of your <?php echo Filters::noXSS($product_name); ?>
 
-				Installation. You can change these values through the administration section of <?php echo Filters::noXSS($product_name); ?>.
-				</p>
+	<p><?php echo L('adminsetuptip1'); ?></p>
+	<p><?php echo L('adminsetuptip2'); ?></p>
+	<p><?php echo L('adminsetuptip3'); ?></p>
 
-				<p>
-				 2) The <strong>Reminder Daemon</strong>.
-				 Starting with the 0.9.8 release, <?php echo Filters::noXSS($product_name); ?> has a background daemon. This is required for Jabber notifications, reminders
-                 and other scheduled actions which will added to Flyspray in the future.
-				</p>
+	<table class="formBlock">
+	<tr>
+		<td align="right"><?php echo Filters::noXSS(L('adminemail')); ?></td>
+		<td align="center"><input class="inputbox" type="text" name="admin_email" value="<?php echo $admin_email; ?>" size="30" /></td>
+	</tr>
+	<tr>
+		<td align="right"><?php echo Filters::noXSS(L('adminusername')); ?></td>
+		<td align="center"><input class="inputbox" type="text" name="admin_username" value="<?php echo $admin_username; ?>" size="30" /></td>
+	</tr>
+	<tr>
+		<td align="right"><?php echo Filters::noXSS(L('adminpassword')); ?></td>
+		<td align="center"><input class="inputbox" type="password" name="admin_password" id="admin_password" value="<?php echo $admin_password; ?>" size="30" /></td>
+	</tr>
+	<tr>
+		<td align="right"><label for="showpassword"><?php echo Filters::noXSS(L('showpassword')); ?></label></td>
+		<td align="center"><input type="checkbox" onclick="ShowHidePassword('admin_password')" id="showpassword"></td>
+	</tr>
+	<tr>
+		<td><?php echo L('syntaxtext'); ?></td>
+		<td>
+			<select name="syntax_plugin">
+			<option value="dokuwiki">Text/Dokuwiki</option>
+			<option value="">HTML/CKEditor</option>
+			</select>
+		</td>
+	</tr>
+	<?php if ($daemonise): ?>
+	<tr>
+		<td align="right" title="<?php echo Filters::noXSS(L('scheduletitle')); ?>"><?php echo Filters::noXSS(L('enablescheduling')); ?></td>
+		<td align="center"><?php echo $daemonise; ?></td>
+	</tr>
+	<?php endif; ?>
+	</table>
 
-				<input type="hidden" name="db_type" value="<?php echo Filters::noXSS($db_type); ?>" />
-				<input type="hidden" name="db_hostname" value="<?php echo Filters::noXSS($db_hostname); ?>" />
-				<input type="hidden" name="db_username" value="<?php echo Filters::noXSS($db_username); ?>" />
-				<input type="hidden" name="db_password" value="<?php echo Filters::noXSS($db_password); ?>" />
-				<input type="hidden" name="db_name" value="<?php echo Filters::noXSS($db_name); ?>" />
-				<input type="hidden" name="db_prefix" value="<?php echo Filters::noXSS($db_prefix); ?>" />
-				</div>
-				<div class="clr"></div>
-				<h2>Proceed to final Setup</h2>
-				<div class="installBlock">
-				<div class="formBlock farRight" style="display:inline;">
-					<input type="hidden" name="action" value="complete" />
-					<input class="button" type="submit" name="next" value="Next >>" />
-				</div>
-				<p>
-				Proceed to complete <?php echo Filters::noXSS($product_name); ?> setup.
-				</p>
-				</div>
-			</form>
-			</div><!-- end of right -->
-			<div class="clr"></div>
+	<input type="hidden" name="db_type" value="<?php echo Filters::noXSS($db_type); ?>" />
+	<input type="hidden" name="db_hostname" value="<?php echo Filters::noXSS($db_hostname); ?>" />
+	<input type="hidden" name="db_username" value="<?php echo Filters::noXSS($db_username); ?>" />
+	<input type="hidden" name="db_password" value="<?php echo Filters::noXSS($db_password); ?>" />
+	<input type="hidden" name="db_name" value="<?php echo Filters::noXSS($db_name); ?>" />
+	<input type="hidden" name="db_prefix" value="<?php echo Filters::noXSS($db_prefix); ?>" />
+
+	<p><?php echo Filters::noXSS(L('proceedtofinalsetuptext')); ?></p>
+	<input type="hidden" name="action" value="complete" />
+	<button class="button" type="submit" name="next" value="<?php echo Filters::noXSS(L('next')); ?> >>" ><?php echo Filters::noXSS(L('proceedtofinalsetup')); ?></button>
+		
+	</div>
+</form>
+</div>
